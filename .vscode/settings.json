@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "binarytree.h": "c",
+        "cstdlib": "c",
+        "preassembler.h": "c",
+        "string.h": "c",
+        "firstpass.h": "c",
+        "typeinfo": "c",
+        "main.h": "c",
+        "linkedlist.h": "c"
+    }
+}
