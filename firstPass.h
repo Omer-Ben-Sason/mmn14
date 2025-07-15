@@ -7,7 +7,7 @@
 
 #define DC_START 0
 #define IC_START 100
-#define DOT ""
+#define DOT "."
 #define SYMBOL_DATA ".data"
 #define SYMBOL_MAT ".mat"
 #define SYMBOL_STRING ".string"

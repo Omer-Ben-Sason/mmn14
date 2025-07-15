@@ -347,11 +347,24 @@ void findMcro(FILE* file, reservedNode* root, char* outputFileName)
 
 FILE* preassmble(FILE* inputFile,char* inputFileName,reservedNode* root)
 {
-    
-    char* outputFile = inputFileName;
+
+    FILE* output = NULL;
+    char* outputFileNameAm = NULL;
+
     findMcro(inputFile, root, inputFileName);
 
     fclose(inputFile);
-    
-    return fopen(outputFile,"r");
+
+    outputFileNameAm = (char*)malloc(strlen(inputFileName) + FOUR_BYTES);
+    if (!outputFileNameAm)
+    {
+        printf("Memory allocation failed\n");
+        return NULL;
+    }
+
+    sprintf(outputFileNameAm, "%s.am", inputFileName);
+    output = fopen(outputFileNameAm, "r");
+    free(outputFileNameAm);
+
+    return output;
 }

@@ -3,7 +3,7 @@ void addSymbol(symbolNode** head, char* name, int address, char* type,char* data
 {
     symbolNode* node = (symbolNode*)malloc(sizeof(symbolNode));
     node->symbol = (symbol*)malloc(sizeof(symbol));
-    node->symbol->name = strdup(name);
+    node->symbol->name = name ? strdup(name) : NULL;
     node->symbol->addr = address;
     node->symbol->type = type;
     node->symbol->data = data;
