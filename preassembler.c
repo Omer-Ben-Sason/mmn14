@@ -12,19 +12,92 @@ void initReservedWords(reservedNode** root)
     char* reserved[] = { /* list of reserved keywords */
         "r3", "r1", "r5", "r0", "r4", "r7", "r2", "r6", 
         ".data", ".entry", ".extern", ".mat", ".string",
-        "add", "bne", "clr", "cmp", "dec", 
-        "inc", "jmp", "jsr", "lea", "mov",
-        "not", "prn", "red", "rts", "stop", "sub" 
+        "mov", "cmp", "add", "sub", "not", 
+        "clr", "lea", "inc", "dec", "jmp",
+        "bne", "red", "prn", "jsr", "rts", "stop" 
     };
 
     int count = sizeof(reserved) / sizeof(reserved[0]); /* total number of reserved words */
     int i = 0; /* loop index */
-
+    char* type = NULL; /* type of reserved word, NULL for most */
+    char* opDst = NULL; /* destination operand, NULL for most */
+    char* opSrc = NULL; /* source operand, NULL for most */
+    char* pData = NULL; /* data for reserved word, NULL for most */
+    char* binary = NULL; /* binary representation, NULL for most */
     for (i = 0; i < count; i++)
     {
-        *root = insertNode(*root, reserved[i], NULL); /* insert each reserved word into the tree */
+        if (*reserved[i]=='r')
+        {
+            type = "register"; /* register type for r0-r7 */
+        }
+        else if (strcmp(reserved[i], ".data") == 0 || strcmp(reserved[i], ".mat") == 0 || strcmp(reserved[i], ".string") == 0)
+        {
+            type = "data"; /* data type for .data, .mat, .string */
+        }
+        else if (strcmp(reserved[i], ".entry") == 0 || strcmp(reserved[i], ".extern") == 0)
+        {
+            type = "symbol"; /* symbol type for .entry, .extern */
+        }
+        else
+        {
+            binary = intToBinary(i);
+            if (strcmp(reserved[i],"mov")||strcmp(reserved[i],"add")||strcmp(reserved[i],"sub"))
+            {
+                opDst = "123"; /* destination operand for mov */
+                opSrc = "0123"; /* source operand for mov */
+            }
+            else if (strcmp(reserved[i],"cmp"))
+            {
+                opDst = "0123"; /* destination operand for mov */
+                opSrc = "0123"; /* source operand for mov */
+            }
+            else if (strcmp(reserved[i],"lea"))
+            {
+                opDst = "123"; /* destination operand for mov */
+                opSrc = "12"; /* source operand for mov */
+            }
+            else if (strcmp(reserved[i],"clr")||strcmp(reserved[i],"not")||strcmp(reserved[i],"inc")||strcmp(reserved[i],"dec")||strcmp(reserved[i],"jmp")||strcmp(reserved[i],"jsr")||strcmp(reserved[i],"bne")||strcmp(reserved[i],"red"))
+            {
+                opDst = "123"; /* destination operand for mov */
+            }
+            else if (strcmp(reserved[i],"prn"))
+            {
+                opDst = "0123"; /* destination operand for mov */
+            }
+            type = "code"; /* command type for other reserved words */
+        }
+        *root = insertNode(*root, reserved[i], pData,type,opDst,opSrc,binary); /* insert each reserved word into the tree */
     }
 }
+/* 
+ * turns an integer into its binary representation
+ * Input: integer number
+ *  * Output: integer representing the binary number
+ */
+char* intToBinary(int num)
+{
+    char* binary = (char*)malloc(9); /* 8 bits + '\0' */
+    int i = 7;
+    if (!binary)
+    {
+        return NULL;
+    }
+
+    binary[8] = '\0';
+
+    
+
+    while (i >= 0)
+    {
+        binary[i] = (num & 1) ? '1' : '0';
+        num >>= 1;
+        i--;
+    }
+
+    return binary;
+}
+
+
 
 /* 
  * Reads a line from a file and returns a dynamically allocated string 
@@ -259,7 +332,7 @@ void findMcro(FILE* file, reservedNode* root, char* outputFileName)
                     }
                     else
                     {
-                        insertNode(root, macroName, NULL); /* add macro to tree */
+                        insertNode(root, macroName, NULL,"mcro",NULL,NULL,NULL); /* add macro to tree */
                     }
                 }
             }

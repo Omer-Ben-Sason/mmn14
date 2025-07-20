@@ -4,6 +4,10 @@
 typedef struct reserved {
     char* name;
     char* pData;
+    char* type;
+    char* opDst;
+    char* opSrc;
+    char* binary;
 } reserved;
 
 typedef struct reservedNode {
@@ -17,8 +21,8 @@ int height(reservedNode* node);
 int getBalance(reservedNode* node);
 reservedNode* rotateRight(reservedNode* y);
 reservedNode* rotateLeft(reservedNode* x);
-reservedNode* createNode(char* name, char* pData);
-reservedNode* insertNode(reservedNode* node, char* name, char* pData);
+reservedNode* createNode(char* name, char* pData, char* type,char* opDst,char* opSrc,char* binary);
+reservedNode* insertNode(reservedNode* node, char* name, char* pData, char* type,char* opDst,char* opSrc,char* binary);
 reservedNode* findNode(reservedNode* root, char* name);
 void printInOrder(reservedNode* root);
 void freeTree(reservedNode* root);

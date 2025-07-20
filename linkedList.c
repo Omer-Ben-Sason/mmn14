@@ -1,22 +1,37 @@
 #include "linkedList.h"
-void addSymbol(symbolNode** head, char* name, int address, char* type,char* data)
+void addSymbol(symbolNode** head, char* name, int address, char* type, char* data)
 {
-    symbolNode* node = (symbolNode*)malloc(sizeof(symbolNode));
-    node->symbol = (symbol*)malloc(sizeof(symbol));
+    symbolNode* node = malloc(sizeof(symbolNode));
+    symbolNode* temp = NULL;
+    node->symbol = malloc(sizeof(symbol));
     node->symbol->name = name ? strdup(name) : NULL;
     node->symbol->addr = address;
-    node->symbol->type = type;
-    node->symbol->data = data;
-    node->next = *head;
-    *head = node;
+    node->symbol->type = type ? strdup(type) : NULL;
+    node->symbol->data = data ? strdup(data) : NULL;
+    node->next = NULL;
+
+    if (*head == NULL)
+    {
+        *head = node;
+    }
+    else
+    {
+        temp = *head;
+        while (temp->next)
+        {
+            temp = temp->next;
+        }
+        temp->next = node;
+    }
 }
+
 void printSymbols(symbolNode* head)
 {
     if (!head)
     {
         return;
     }
-    printf("%d %s\t%s\t%s",head->symbol->addr,(head->symbol->name)?head->symbol->name:"\0",head->symbol->data,(head->symbol->type)?head->symbol->type:"\0");
+    printf("addr: %d\tname: %s\tdata: %s\ttype: %s\n",head->symbol->addr,(head->symbol->name)?head->symbol->name:"\0",(head->symbol->data)?head->symbol->data:"0",(head->symbol->type)?head->symbol->type:"\0");
     printSymbols(head->next);
 }
 

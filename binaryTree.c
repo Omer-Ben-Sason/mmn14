@@ -43,14 +43,17 @@ reservedNode* rotateLeft(reservedNode* x)
     return y;
 }
 
-reservedNode* createNode(char* name, char* pData)
+reservedNode* createNode(char* name, char* pData,char* type,char* opDst,char* opSrc,char* binary)
 {
     reservedNode* node = (reservedNode*)malloc(sizeof(reservedNode));
     node->reserved = (reserved*)malloc(sizeof(reserved));
 
     node->reserved->name = strdup(name);
     node->reserved->pData = pData ? strdup(pData) : 0;
-
+    node->reserved->type = type ? strdup(type) : 0;
+    node->reserved->opDst = opDst ? strdup(opDst) : 0;
+    node->reserved->opSrc = opSrc ? strdup(opSrc) : 0;
+    node->reserved->binary = binary ? strdup(binary) : 0;
     node->left = 0;
     node->right = 0;
     node->height = 1;
@@ -58,24 +61,24 @@ reservedNode* createNode(char* name, char* pData)
     return node;
 }
 
-reservedNode* insertNode(reservedNode* node, char* name, char* pData)
+reservedNode* insertNode(reservedNode* node, char* name, char* pData, char* type, char* opDst, char* opSrc,char* binary)
 {
     int cmp = 0,balance=0;
 
     if (!node)
     {
-        return createNode(name, pData);
+        return createNode(name, pData, type, opDst, opSrc, binary);
     }
 
     cmp = strcmp(name, node->reserved->name);
 
     if (cmp < 0)
     {
-        node->left = insertNode(node->left, name, pData);
+        node->left = insertNode(node->left, name, pData,type, opDst, opSrc, binary);
     }
     else if (cmp > 0)
     {
-        node->right = insertNode(node->right, name, pData);
+        node->right = insertNode(node->right, name, pData, type, opDst, opSrc, binary);
     }
     else
     {

@@ -13,7 +13,8 @@
 #define SYMBOL_STRING ".string"
 #define SYMBOL_EXT ".extern"
 #define SYMBOL_ENT ".entry"
-#define DATA "data"
+#define SYMBOL_CODE "code"
+
 #define LABAL_LEN 31
 #define COLOM ':'
 #define BUFF_SIZE 81
@@ -24,11 +25,12 @@
 #define MINUS_ASCII '-'
 #define PLUS_ASCII '+'
 #define COMMA_ASCII ','
+#define ASCII_BUF_SIZE 12
 
 symbolNode* firstPass(reservedNode* root, FILE* file);
 int isNumeric(char* str);
-int putInDC(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC, int* IC);
+int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC, int* IC);
 char* checkIfLabal(char* labal, reservedNode* root);
 symbolNode* buildSymbols(reservedNode* root, FILE* file);
-
+void putInIC(int* IC, char** line, int lineNum, symbolNode** head);
 #endif 

@@ -11,6 +11,7 @@
 #define MCRO_END "mcroend"
 #define FOUR_BYTES 4
 
+char* intToBinary(int num);
 void initReservedWords(reservedNode** root);
 char* loadLine(FILE* file);
 char** breakLine(char* line);
