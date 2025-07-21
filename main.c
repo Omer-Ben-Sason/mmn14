@@ -17,6 +17,7 @@ int main(int argc,char** argv)
     inputFile = fopen(strcat(strdup(inputFileName),".as"),"r"); 
     outputFileAm = preassmble(inputFile,inputFileName,root);
     symbolNodeHead = firstPass(root,outputFileAm);
+    printInOrder(root);
     printf("\n\n\n");
     printSymbols(symbolNodeHead);
     free(inputFileName);

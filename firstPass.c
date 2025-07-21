@@ -1,6 +1,24 @@
 #include "firstPass.h"
 
 int foundErrorFirstPass = 0; 
+char* lastReg = NULL;
+char** breakToParams(char* line) 
+{
+    char** params = (char**)malloc(MAX_PARAMS * sizeof(char*)); 
+    int paramCount = 0;  
+    char* token = strtok(line, ",[]"); 
+
+    while (token != NULL && paramCount < MAX_PARAMS) 
+    {
+        params[paramCount] = (char*)malloc(strlen(token) + 1);  
+        strcpy(params[paramCount], token);  
+        paramCount++;
+        token = strtok(NULL, ",[]");  
+    }
+
+    params[paramCount] = NULL; 
+    return params;
+}
 symbolNode* buildSymbols(reservedNode* root, FILE* file)
 {
     int DC = DC_START;
@@ -26,7 +44,6 @@ symbolNode* buildSymbols(reservedNode* root, FILE* file)
 
         inst = commands[1];
         rNode = findNode(root, inst);
-        printf("%s\n",inst);
         if (rNode && strncmp(rNode->reserved->name, DOT, 1) == 0)
         {
             if (strcmp(inst, SYMBOL_DATA) == 0 || strcmp(inst, SYMBOL_MAT) == 0 || strcmp(inst, SYMBOL_STRING) == 0)
@@ -45,15 +62,16 @@ symbolNode* buildSymbols(reservedNode* root, FILE* file)
             {
                 continue;
             }
-            else if (findNode(root, inst)&&strcmp(findNode(root, inst)->reserved->type, "code") == 0)
-            {
-                putInIC(&IC, commands, lineNum, &head);
-            }
             else
             {
                 printf("at line %d: invalid directive: %s\n", lineNum, inst);
                 foundErrorFirstPass = 1;
             }
+        }
+        else if (findNode(root, inst)&& strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0)
+        {
+            restOfLine = line + strlen(commands[0]) + strlen(commands[1]) + 2;
+            putInIC(&IC, restOfLine, lineNum, &head, labal, root);
         }
         
 
@@ -62,7 +80,8 @@ symbolNode* buildSymbols(reservedNode* root, FILE* file)
         free(commands);
         free(line);
     }
-
+    if (commands) free(commands);
+    if (line) free(line);
     return head;
 }
 
@@ -365,16 +384,45 @@ int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char*
     }
     return count;
 }
-void putInIC(int* IC, char** line, int lineNum, symbolNode** head)
+void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head,char* name,reservedNode* root)
 {
     int i = 0;
-    printf("11111111111");
-    for (i=0;line[i]!=NULL;i++)
+    char** params = breakToParams(restOfLine);
+    reservedNode* rNode = NULL;
+    char* currBinary = NULL,*tmp = NULL;
+    for (i = 0; params[i] != NULL; i++)
     {
-        printf("11111111111");
+        if (isNumeric(params[i]))
+        {
+            addSymbol(head, name, (*IC)++, SYMBOL_CODE, params[i]);
+        }
+        else if ((rNode = findNode(root, params[i])))
+        {
+            printf("%s %s\n", rNode->reserved->name, rNode->reserved->type);
+            if (rNode->reserved->type && strcmp(rNode->reserved->type, REGISTER_SYMBOL) == 0)
+            {
+                currBinary = rNode->reserved->binary+FOUR_BYTES;
+                if (params[i+1]&&findNode(root,params[i+1])->reserved->type && strcmp(findNode(root,params[i+1])->reserved->type,REGISTER_SYMBOL)==0)
+                {
+                    lastReg = strdup(currBinary);
+                    return;
+                }
+                if (lastReg)
+                {
+                    tmp = lastReg+FOUR_BYTES;
+                    strcpy(tmp, currBinary);
+                }
+                addSymbol(head, name, (*IC)++, SYMBOL_CODE, rNode->reserved->binary);
+            }
+            else
+            {
+                printf("at line %d: invalid instruction parameter: %s\n", lineNum, params[i]);
+                foundErrorFirstPass = 1;
+            }
+            addSymbol(head, name, (*IC)++, SYMBOL_CODE, params[i]);
+        }
+        free(params[i]);
     }
-    printf("\n");
-    
 }
 int isNumeric(char* str)
 {

@@ -138,7 +138,8 @@ void printInOrder(reservedNode* root)
         return;
     }
     printInOrder(root->left);
-    printf("%s\n", root->reserved->name);
+    printf("%s %s %s\n", root->reserved->name, root->reserved->type ? root->reserved->type : "NULL", 
+           root->reserved->binary ? root->reserved->binary : "NULL");
     printInOrder(root->right);
 }
 

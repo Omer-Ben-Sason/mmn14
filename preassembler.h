@@ -5,12 +5,14 @@
 #include "utils.h"
 #include <stdio.h>
 
+
 #define LEN 81
 #define EOL '\n'
 #define MCRO_START "mcro"
 #define MCRO_END "mcroend"
 #define FOUR_BYTES 4
-
+#define ZERO_ASCII '0'
+#define SEVEN_ASCII '7'
 char* intToBinary(int num);
 void initReservedWords(reservedNode** root);
 char* loadLine(FILE* file);

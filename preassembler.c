@@ -18,7 +18,7 @@ void initReservedWords(reservedNode** root)
     };
 
     int count = sizeof(reserved) / sizeof(reserved[0]); /* total number of reserved words */
-    int i = 0; /* loop index */
+    int i = 0,j=0; /* loop index */
     char* type = NULL; /* type of reserved word, NULL for most */
     char* opDst = NULL; /* destination operand, NULL for most */
     char* opSrc = NULL; /* source operand, NULL for most */
@@ -26,9 +26,11 @@ void initReservedWords(reservedNode** root)
     char* binary = NULL; /* binary representation, NULL for most */
     for (i = 0; i < count; i++)
     {
-        if (*reserved[i]=='r')
+        binary = NULL; /* reset binary for each reserved word */
+        if (*reserved[i]=='r'&&*(reserved[i]+1)>=ZERO_ASCII&&*(reserved[i]+1)<=SEVEN_ASCII)
         {
             type = "register"; /* register type for r0-r7 */
+            binary = intToBinary(*(reserved[i]+1)); /* binary representation for registers */
         }
         else if (strcmp(reserved[i], ".data") == 0 || strcmp(reserved[i], ".mat") == 0 || strcmp(reserved[i], ".string") == 0)
         {
@@ -40,7 +42,7 @@ void initReservedWords(reservedNode** root)
         }
         else
         {
-            binary = intToBinary(i);
+            binary = intToBinary(j++); /* binary representation for commands */
             if (strcmp(reserved[i],"mov")||strcmp(reserved[i],"add")||strcmp(reserved[i],"sub"))
             {
                 opDst = "123"; /* destination operand for mov */

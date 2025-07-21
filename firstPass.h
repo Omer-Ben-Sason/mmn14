@@ -26,11 +26,12 @@
 #define PLUS_ASCII '+'
 #define COMMA_ASCII ','
 #define ASCII_BUF_SIZE 12
-
+#define MAX_PARAMS 10  
+#define REGISTER_SYMBOL "register"
 symbolNode* firstPass(reservedNode* root, FILE* file);
 int isNumeric(char* str);
 int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC, int* IC);
 char* checkIfLabal(char* labal, reservedNode* root);
 symbolNode* buildSymbols(reservedNode* root, FILE* file);
-void putInIC(int* IC, char** line, int lineNum, symbolNode** head);
+void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head,char* name,reservedNode* root);
 #endif 
