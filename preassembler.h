@@ -8,6 +8,7 @@
 
 #define LEN 81
 #define EOL '\n'
+#define EVLEVEN_BIT 11
 #define MCRO_START "mcro"
 #define MCRO_END "mcroend"
 #define FOUR_BYTES 4

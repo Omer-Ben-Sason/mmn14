@@ -18,4 +18,5 @@ void addSymbol(symbolNode** head, char* name, int address, char* type,char* data
 symbol* findSymbol(symbolNode* head, char* name);
 void freeSymbolTable(symbolNode* head);
 void printSymbols(symbolNode* head);
+void insertSymbolSortedByAddr(symbolNode** head, char* name, int address, char* type, char* data);
 #endif

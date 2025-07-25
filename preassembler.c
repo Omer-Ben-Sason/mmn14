@@ -30,7 +30,7 @@ void initReservedWords(reservedNode** root)
         if (*reserved[i]=='r'&&*(reserved[i]+1)>=ZERO_ASCII&&*(reserved[i]+1)<=SEVEN_ASCII)
         {
             type = "register"; /* register type for r0-r7 */
-            binary = intToBinary(*(reserved[i]+1)); /* binary representation for registers */
+            binary = intToBinary(*(reserved[i]+1)-ZERO_ASCII); /* binary representation for registers */
         }
         else if (strcmp(reserved[i], ".data") == 0 || strcmp(reserved[i], ".mat") == 0 || strcmp(reserved[i], ".string") == 0)
         {
@@ -78,26 +78,28 @@ void initReservedWords(reservedNode** root)
  */
 char* intToBinary(int num)
 {
-    char* binary = (char*)malloc(9); /* 8 bits + '\0' */
-    int i = 7;
+    char* binary = (char*)malloc(EVLEVEN_BIT); /* 10 bits + '\0' */
+    int bits = EVLEVEN_BIT-1;
+    unsigned int mask = (1 << bits) - 1; 
+    int i = 0;
+
     if (!binary)
     {
         return NULL;
     }
 
-    binary[8] = '\0';
+    num &= mask; 
 
-    
-
-    while (i >= 0)
+    binary[bits] = '\0';
+    for (i = bits - 1; i >= 0; i--)
     {
         binary[i] = (num & 1) ? '1' : '0';
         num >>= 1;
-        i--;
     }
 
     return binary;
 }
+
 
 
 

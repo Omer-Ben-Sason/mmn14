@@ -7,14 +7,15 @@
 
 #define DC_START 0
 #define IC_START 100
-#define DOT "."
+#define DOT '.'
+#define FOUR_BITS 4
 #define SYMBOL_DATA ".data"
 #define SYMBOL_MAT ".mat"
 #define SYMBOL_STRING ".string"
 #define SYMBOL_EXT ".extern"
 #define SYMBOL_ENT ".entry"
 #define SYMBOL_CODE "code"
-
+#define REGISTER_SYMBOL "register"
 #define LABAL_LEN 31
 #define COLOM ':'
 #define BUFF_SIZE 81
@@ -24,14 +25,29 @@
 #define RIGHT_BRACKET ']'
 #define MINUS_ASCII '-'
 #define PLUS_ASCII '+'
+#define CLEAR_MEM "0000000000"
+#define TEN_BITS 10
+#define SIX_BITS 6
+#define EIGHT_BITS 8
 #define COMMA_ASCII ','
 #define ASCII_BUF_SIZE 12
 #define MAX_PARAMS 10  
-#define REGISTER_SYMBOL "register"
-symbolNode* firstPass(reservedNode* root, FILE* file);
+#define ONE_ASCII '1'
+#define TWO_ASCII '2'
+#define THREE_ASCII '3'
+
+typedef struct memory {
+    symbolNode* headDC;
+    symbolNode* headIC;
+} memory;
+char** breakToParams(char* line,int breakBrackets);
+int checkIfValidMatParam(char* params);
+memory firstPass(reservedNode* root, FILE* file);
 int isNumeric(char* str);
-int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC, int* IC);
+int putInDC(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC);
 char* checkIfLabal(char* labal, reservedNode* root);
-symbolNode* buildSymbols(reservedNode* root, FILE* file);
-void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head,char* name,reservedNode* root);
+memory buildSymbols(reservedNode* root, FILE* file);
+void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head,char* name,reservedNode* root,char** lastReg);
+char* countRestOfLine(char* line,int isLabal);
+
 #endif 

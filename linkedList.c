@@ -24,6 +24,33 @@ void addSymbol(symbolNode** head, char* name, int address, char* type, char* dat
         temp->next = node;
     }
 }
+void insertSymbolSortedByAddr(symbolNode** head, char* name, int address, char* type, char* data)
+{
+    symbolNode* node = malloc(sizeof(symbolNode));
+    symbolNode* curr =NULL;
+    node->symbol = malloc(sizeof(symbol));
+    node->symbol->name = name ? strdup(name) : NULL;
+    node->symbol->addr = address;
+    node->symbol->type = type ? strdup(type) : NULL;
+    node->symbol->data = data ? strdup(data) : NULL;
+    node->next = NULL;
+
+    if (*head == NULL || (*head)->symbol->addr > address)
+    {
+        node->next = *head;
+        *head = node;
+        return;
+    }
+
+    curr= *head;
+    while (curr->next && curr->next->symbol->addr < address)
+    {
+        curr = curr->next;
+    }
+
+    node->next = curr->next;
+    curr->next = node;
+}
 
 void printSymbols(symbolNode* head)
 {

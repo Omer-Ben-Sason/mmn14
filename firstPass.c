@@ -1,26 +1,66 @@
 #include "firstPass.h"
 
 int foundErrorFirstPass = 0; 
-char* lastReg = NULL;
-char** breakToParams(char* line) 
+char** breakToParams(char* line, int breakBrackets) 
 {
+    int paramCount = 0;
+    char* token = NULL;
+    char* lineCopy = NULL;
     char** params = (char**)malloc(MAX_PARAMS * sizeof(char*)); 
-    int paramCount = 0;  
-    char* token = strtok(line, ",[]"); 
+
+    if (!params) 
+    {
+        printf("Memory allocation failed for params\n");
+        return NULL;
+    }
+
+    lineCopy = strdup(line);
+    if (!lineCopy)
+    {
+        printf("Memory allocation failed for line copy\n");
+        free(params);
+        return NULL;
+    }
+
+    if (breakBrackets)
+    {
+        token = strtok(lineCopy, ",[] \t"); 
+    }
+    else
+    {
+        token = strtok(lineCopy, ", \t"); 
+    }
 
     while (token != NULL && paramCount < MAX_PARAMS) 
     {
         params[paramCount] = (char*)malloc(strlen(token) + 1);  
+        if (!params[paramCount])
+        {
+            printf("Memory allocation failed for param\n");
+            break;
+        }
+
         strcpy(params[paramCount], token);  
         paramCount++;
-        token = strtok(NULL, ",[]");  
+
+        if (breakBrackets)
+        {
+            token = strtok(NULL, ",[] \t"); 
+        }
+        else
+        {
+            token = strtok(NULL, ", \t"); 
+        } 
     }
 
     params[paramCount] = NULL; 
+    free(lineCopy);
     return params;
 }
-symbolNode* buildSymbols(reservedNode* root, FILE* file)
+
+memory buildSymbols(reservedNode* root, FILE* file)
 {
+    int i = 0;
     int DC = DC_START;
     int IC = IC_START;
     char** commands = NULL, *line = NULL;
@@ -28,37 +68,47 @@ symbolNode* buildSymbols(reservedNode* root, FILE* file)
     int thereIsLabal = 0;
     reservedNode* rNode = NULL;
     char* inst = NULL, *labal = NULL;
-    char* restOfLine = NULL;
-    symbolNode* head = NULL;
+    memory mem = {0};
+    symbolNode* headDC = NULL,*headIC = NULL;
+    int inCode = 0;
+    char* lastReg = malloc(TEN_BITS + 1);
+    for (i = 0; i < TEN_BITS; i++)
+    {
+        lastReg[i] = '0';
+    }
+    lastReg[TEN_BITS] = '\0';
     fseek(file, 0, SEEK_SET);
 
-    while ((line = loadLine(file)) != NULL)
+    while ((line = loadLine(file)) != NULL&&*line!=EOF&&*line!=0)
     {
         lineNum++;
+        if (line == NULL || *line == '\0' || strspn(line, " \t\r\n") == strlen(line))     
+        {
+            continue;
+        }
         commands = breakLine(line);
-
-        if ((labal = (checkIfLabal(commands[0], root))))
+        
+        if ((labal = checkIfLabal(commands[0], root)))
         {
             thereIsLabal = 1;
         }
+        inst = thereIsLabal ? commands[1] : commands[0];
 
-        inst = commands[1];
         rNode = findNode(root, inst);
-        if (rNode && strncmp(rNode->reserved->name, DOT, 1) == 0)
+        if (rNode && *(rNode->reserved->name) == DOT &&!inCode)
         {
             if (strcmp(inst, SYMBOL_DATA) == 0 || strcmp(inst, SYMBOL_MAT) == 0 || strcmp(inst, SYMBOL_STRING) == 0)
             {
                 if (thereIsLabal)
                 {
-                    restOfLine = line + strlen(commands[0]) + strlen(commands[1]) + 2;
-                    putInMem(inst, restOfLine, lineNum, &head, labal, &DC, &IC);
+                    putInDC(inst, countRestOfLine(line,thereIsLabal), lineNum, &headDC, labal, &DC);
                 }
             }
             else if (strcmp(inst, SYMBOL_EXT) == 0)
             {
-                addSymbol(&head, labal, DC, SYMBOL_EXT, 0);
+                addSymbol(&headDC, labal, DC, SYMBOL_EXT, 0);
             }
-            else if (strcmp(inst, SYMBOL_ENT) == 0)
+            else if (strcmp(inst, SYMBOL_EXT) == 0)
             {
                 continue;
             }
@@ -70,19 +120,22 @@ symbolNode* buildSymbols(reservedNode* root, FILE* file)
         }
         else if (findNode(root, inst)&& strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0)
         {
-            restOfLine = line + strlen(commands[0]) + strlen(commands[1]) + 2;
-            putInIC(&IC, restOfLine, lineNum, &head, labal, root);
+            putInIC(&IC, countRestOfLine(line,thereIsLabal), lineNum, &headIC, labal, root, &lastReg);
+        }
+        else
+        {
+            putInIC(&IC, countRestOfLine(line,thereIsLabal), lineNum, &headIC, labal, root, &lastReg);
         }
         
 
         thereIsLabal = 0;
 
-        free(commands);
-        free(line);
     }
     if (commands) free(commands);
     if (line) free(line);
-    return head;
+    mem.headDC = headDC;
+    mem.headIC = headIC;
+    return mem;
 }
 
 char* checkIfLabal(char* labal, reservedNode* root)
@@ -109,7 +162,7 @@ char* checkIfLabal(char* labal, reservedNode* root)
     return labal;
 }
 
-int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC, int* IC)
+int putInDC(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC)
 {
     int count = 0;
     char* curr = restOfLine;
@@ -164,7 +217,7 @@ int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char*
                 tmp[i] = '\0';
                 if (isNumeric(tmp))
                 {
-                    addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, tmp);
+                    addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, intToBinary(atoi(tmp)));
                     count++;
                     name = NULL;
                 }
@@ -191,7 +244,7 @@ int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char*
                 tmp[i] = '\0';
                 if (isNumeric(tmp))
                 {
-                    addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, tmp);
+                    addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, intToBinary(atoi(tmp)));
                     count++;
                     name = NULL;
                 }
@@ -227,7 +280,7 @@ int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char*
                 }
                 sprintf(asciiStr, "%d", *curr);
                 
-                addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, strdup(asciiStr));
+                addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL,  intToBinary(atoi(strdup(asciiStr))));
                 count++;
                 name = NULL;
                 curr++;
@@ -356,7 +409,7 @@ int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char*
                 if (i > 0)
                 {
                     tmp[i] = '\0';
-                    putInMem(SYMBOL_DATA, tmp, lineNum, head, name, DC, IC);
+                    putInDC(SYMBOL_DATA, tmp, lineNum, head, name, DC);
                     name = NULL;  
                     count++;          
                 }
@@ -384,46 +437,173 @@ int putInMem(char* type, char* restOfLine, int lineNum, symbolNode** head, char*
     }
     return count;
 }
-void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head,char* name,reservedNode* root)
+void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* name, reservedNode* root, char** lastReg)
 {
-    int i = 0;
-    char** params = breakToParams(restOfLine);
-    reservedNode* rNode = NULL;
-    char* currBinary = NULL,*tmp = NULL;
+    int i = 0, j = 0;
+    char** params = breakToParams(restOfLine,1);
+    reservedNode* rNode = NULL, * rNodeNext = NULL;
+    char* currBinary = NULL,*currBinaryInst = NULL;
+    char fullRegBin[TEN_BITS + 1];
+    int currParamMat = 0;
+    int icStart=*IC;
+    char addressingTypeSrc = 0,addressingTypeDst = 0;
+    char* addressingTypeString = NULL;
+    char regBin[TEN_BITS + 1];
+    char* currOpDst = NULL,*currOpSrc = NULL,*currName = name;
+    (*IC)++;
+
     for (i = 0; params[i] != NULL; i++)
     {
-        if (isNumeric(params[i]))
+
+        if ((currParamMat = checkIfValidMatParam(params[i])) == 0)
         {
-            addSymbol(head, name, (*IC)++, SYMBOL_CODE, params[i]);
+            printf("at line %d: invalid mat format, expected [rows][cols]\n", lineNum);
+            foundErrorFirstPass = 1;
         }
-        else if ((rNode = findNode(root, params[i])))
+        else if (currParamMat==1)
         {
-            printf("%s %s\n", rNode->reserved->name, rNode->reserved->type);
-            if (rNode->reserved->type && strcmp(rNode->reserved->type, REGISTER_SYMBOL) == 0)
+            if (addressingTypeSrc)
             {
-                currBinary = rNode->reserved->binary+FOUR_BYTES;
-                if (params[i+1]&&findNode(root,params[i+1])->reserved->type && strcmp(findNode(root,params[i+1])->reserved->type,REGISTER_SYMBOL)==0)
-                {
-                    lastReg = strdup(currBinary);
-                    return;
-                }
-                if (lastReg)
-                {
-                    tmp = lastReg+FOUR_BYTES;
-                    strcpy(tmp, currBinary);
-                }
-                addSymbol(head, name, (*IC)++, SYMBOL_CODE, rNode->reserved->binary);
+                addressingTypeDst = TWO_ASCII;
             }
             else
             {
-                printf("at line %d: invalid instruction parameter: %s\n", lineNum, params[i]);
+                addressingTypeSrc = TWO_ASCII;
+            } 
+        }
+        if (params[i] && strchr(params[i], '\n'))
+        {
+            *strchr(params[i], '\n') = '\0';
+        }
+        
+        if ((*params[i]=='#') && isNumeric(params[i]+1))
+        {
+            addSymbol(head, name, (*IC)++, SYMBOL_CODE,intToBinary(atoi(params[i]+1)));
+            if (addressingTypeSrc)
+            {
+                addressingTypeDst = TWO_ASCII;
+            }
+            else
+            {
+                addressingTypeSrc = ZERO_ASCII;
+            }        
+         }
+        else if ((rNode = findNode(root, params[i])))
+        {
+            if (rNode->reserved->type && strcmp(rNode->reserved->type, REGISTER_SYMBOL) == 0)
+            {
+                currBinary = rNode->reserved->binary + SIX_BITS;
+                if (params[i + 1])
+                {
+                    rNodeNext = findNode(root, params[i + 1]);
+                }
+                if (rNodeNext && rNodeNext->reserved && strcmp(rNodeNext->reserved->type, REGISTER_SYMBOL) == 0)
+                {
+                    strncpy(fullRegBin, currBinary, FOUR_BITS);
+                    strncpy(fullRegBin + FOUR_BITS, rNodeNext->reserved->binary + SIX_BITS, FOUR_BITS);
+                    fullRegBin[8] = '0';
+                    fullRegBin[9] = '0';
+                    fullRegBin[10] = '\0';
+                    if (name)
+                    {
+                        name = NULL;
+                    }
+                    addSymbol(head, name, (*IC)++, SYMBOL_CODE, strdup(fullRegBin));
+                    i++; /* skip next param (already used) */
+                }
+                else
+                {
+                    /* write just one register */
+                    if (addressingTypeSrc)
+                    {
+                        addressingTypeDst = THREE_ASCII;
+                    }
+                    else
+                    {
+                        addressingTypeSrc = TWO_ASCII;
+                    }                    
+                    strcpy(regBin, CLEAR_MEM);
+                    strncpy(regBin, currBinary, 4);
+                    for (j = FOUR_BITS; j < TEN_BITS; j++) regBin[j] = '0';
+                    regBin[10] = '\0';
+                    if (name)
+                    {
+                        name = NULL;
+                    }
+                    addSymbol(head, name, (*IC)++, SYMBOL_CODE, strdup(regBin));
+                }
+            }
+            else if (rNode->reserved->type && strcmp(rNode->reserved->type, SYMBOL_CODE) == 0)
+            {
+                currBinary = strdup(CLEAR_MEM);
+                currOpSrc = rNode->reserved->opSrc;
+                currOpDst = rNode->reserved->opDst;
+                for (j = 0; j < FOUR_BITS; j++)
+                {
+                    currBinary[j] = rNode->reserved->binary[j+SIX_BITS];
+                }
+                currBinary[TEN_BITS]= '\0';
+
+                currBinaryInst = currBinary;
+
+            }
+        }
+        else if (!rNode)
+        {
+            if (!checkIfLabal(params[i],root))
+            {
+                if (addressingTypeSrc)
+                {
+                    addressingTypeDst = TWO_ASCII;
+                }
+                else
+                {
+                    addressingTypeSrc = ONE_ASCII;
+                } 
+                addSymbol(head, NULL, (*IC)++, SYMBOL_CODE, strdup(params[i]));
+            }
+        } 
+        if (!currBinaryInst)
+        {
+            currBinaryInst = CLEAR_MEM;
+        }
+
+        if (currBinaryInst)
+        {
+            addressingTypeString = intToBinary(addressingTypeDst-ZERO_ASCII);
+
+            if (currOpDst&&strchr(currOpDst,addressingTypeDst))
+            {
+                currBinaryInst[6] = addressingTypeString[8];
+                currBinaryInst[7] = addressingTypeString[9];
+            }
+            else if (currOpDst)
+            {
+                printf("at line %d: addressing type of the dst is invalid\n",lineNum);
                 foundErrorFirstPass = 1;
             }
-            addSymbol(head, name, (*IC)++, SYMBOL_CODE, params[i]);
+            addressingTypeString = intToBinary(addressingTypeSrc-ZERO_ASCII);
+            if (currOpSrc&&strchr(currOpSrc,addressingTypeSrc))
+            {
+                currBinaryInst[4] = addressingTypeString[8];
+                currBinaryInst[5] = addressingTypeString[9];
+            }
+            else if (currOpSrc)
+            {
+                printf("at line %d: addressing type of the src is invalid\n",lineNum);
+                foundErrorFirstPass = 1;
+            }
         }
+        printf("%s %d\n",currBinaryInst,lineNum);
         free(params[i]);
     }
+    insertSymbolSortedByAddr(head, currName, icStart, SYMBOL_CODE, strdup(currBinaryInst));
+    
+    free(params);
+    printf("\n\n\n");
+
 }
+
 int isNumeric(char* str)
 {
     if (*str == '+' || *str == '-')
@@ -445,15 +625,65 @@ int isNumeric(char* str)
     return 1;
 }
 
-symbolNode* firstPass(reservedNode* root, FILE* file)
+memory firstPass(reservedNode* root, FILE* file)
 {
+    memory mem = {0};
     if (foundErrorFirstPass)
     {
         printf("Errors found in first pass, aborting symbol table creation.\n");
-        return NULL;
+        mem.headDC = NULL;
+        mem.headIC = NULL;
+        return mem;/* return empty memory struct */
     }
     else
     {
         return buildSymbols(root, file);
     }
+}
+
+int checkIfValidMatParam(char* param)
+{
+    int brackets = 0;
+    int foundBracket = 0;
+    char* paramTmp = strdup(param);
+    if (!paramTmp)
+    {
+        return -1;
+    }
+
+    while (*paramTmp)
+    {
+        if (*paramTmp == LEFT_BRACKET)
+        {
+            foundBracket=1;
+            brackets++;
+        }
+        else if (*paramTmp == RIGHT_BRACKET)
+        {
+            brackets--;
+            if (brackets < 0)
+            {
+                return 0;
+            }
+        }
+        paramTmp++;
+    }
+    if (!foundBracket)
+    {
+        return -1; /* no brackets found */
+    }
+    return (brackets == 2) ? 1 : 0; /* valid = 1, invalid = 0 */
+}
+
+char* countRestOfLine(char* line, int isLabal)
+{
+    int wordCount = isLabal ? 2 : 1;
+    while (*line && wordCount > 0)
+    {
+        while (*line && (*line != ' ' && *line != '\t')) line++; 
+        while (*line && (*line == ' ' || *line == '\t')) line++; 
+        wordCount--;
+    }
+
+    return line;
 }

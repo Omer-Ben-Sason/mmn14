@@ -4,7 +4,7 @@ int main(int argc,char** argv)
 {
     reservedNode* root = NULL; /* root of macro tree */
     FILE* outputFileAm = NULL;
-    symbolNode* symbolNodeHead = NULL;
+    memory mem = {0};
     FILE* inputFile = NULL;
     char* inputFileName = malloc(100); 
     if (!inputFileName)
@@ -16,14 +16,16 @@ int main(int argc,char** argv)
     strcpy(inputFileName, "file"); 
     inputFile = fopen(strcat(strdup(inputFileName),".as"),"r"); 
     outputFileAm = preassmble(inputFile,inputFileName,root);
-    symbolNodeHead = firstPass(root,outputFileAm);
+    mem = firstPass(root,outputFileAm);
     printInOrder(root);
     printf("\n\n\n");
-    printSymbols(symbolNodeHead);
+    printSymbols(mem.headDC);
+    printSymbols(mem.headIC);
     free(inputFileName);
     fclose(outputFileAm);
     fclose(inputFile);
     free(root);
-    free(symbolNodeHead);
+    free(mem.headDC);
+    free(mem.headIC);
     return 0;
 }
