@@ -3,16 +3,19 @@
     "tasks": [
         {
             "type": "cppbuild",
-            "label": "Build preassembler",
+            "label": "Build assembler",
             "command": "C:\\msys64\\ucrt64\\bin\\gcc.exe",
             "args": [
                 "-Wall",
                 "-ansi",
                 "-pedantic",
                 "preassembler.c",
+                "firstPass.c",
+                "linkedList.c",
                 "binaryTree.c",
+                "main.c",
                 "-o",
-                "preassembler.exe"
+                "main.exe"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -24,7 +27,7 @@
                 "kind": "build",
                 "isDefault": true
             },
-            "detail": "Build with gcc"
+            "detail": "Build full assembler with gcc"
         }
     ]
 }

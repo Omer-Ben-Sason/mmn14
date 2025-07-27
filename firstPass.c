@@ -120,11 +120,11 @@ memory buildSymbols(reservedNode* root, FILE* file)
         }
         else if (findNode(root, inst)&& strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0)
         {
-            putInIC(&IC, countRestOfLine(line,thereIsLabal), lineNum, &headIC, labal, root, &lastReg);
+            putInIC(&IC, countRestOfLine(line,thereIsLabal), lineNum, &headIC, labal, root, &lastReg,inst);
         }
         else
         {
-            putInIC(&IC, countRestOfLine(line,thereIsLabal), lineNum, &headIC, labal, root, &lastReg);
+            putInIC(&IC, countRestOfLine(line,thereIsLabal), lineNum, &headIC, labal, root, &lastReg,inst);
         }
         
 
@@ -437,40 +437,42 @@ int putInDC(char* type, char* restOfLine, int lineNum, symbolNode** head, char* 
     }
     return count;
 }
-void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* name, reservedNode* root, char** lastReg)
+void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* name, reservedNode* root, char** lastReg,char* inst)
 {
     int i = 0, j = 0;
-    char** params = breakToParams(restOfLine,1);
+    char** params = breakToParams(restOfLine,1),**paramsBackets = breakToParams(restOfLine,0);
     reservedNode* rNode = NULL, * rNodeNext = NULL;
     char* currBinary = NULL,*currBinaryInst = NULL;
     char fullRegBin[TEN_BITS + 1];
     int currParamMat = 0;
     int icStart=*IC;
-    char addressingTypeSrc = 0,addressingTypeDst = 0;
+    char addressingTypeSrc = -1,addressingTypeDst = -1;
     char* addressingTypeString = NULL;
     char regBin[TEN_BITS + 1];
     char* currOpDst = NULL,*currOpSrc = NULL,*currName = name;
     (*IC)++;
+    if (findNode(root,inst)->reserved->type && strcmp(findNode(root,inst)->reserved->type, SYMBOL_CODE) == 0)
+    {
+        currBinary = strdup(CLEAR_MEM);
+        currOpSrc = findNode(root,inst)->reserved->opSrc;
+        currOpDst = findNode(root,inst)->reserved->opDst;
+        for (j = 0; j < FOUR_BITS; j++)
+        {
+            currBinary[j] = findNode(root,inst)->reserved->binary[j+SIX_BITS];
+        }
+        currBinary[TEN_BITS]= '\0';
+        currBinaryInst = currBinary;
 
+    }
     for (i = 0; params[i] != NULL; i++)
     {
-
+        printf("%s",params[i]);
         if ((currParamMat = checkIfValidMatParam(params[i])) == 0)
         {
             printf("at line %d: invalid mat format, expected [rows][cols]\n", lineNum);
             foundErrorFirstPass = 1;
         }
-        else if (currParamMat==1)
-        {
-            if (addressingTypeSrc)
-            {
-                addressingTypeDst = TWO_ASCII;
-            }
-            else
-            {
-                addressingTypeSrc = TWO_ASCII;
-            } 
-        }
+
         if (params[i] && strchr(params[i], '\n'))
         {
             *strchr(params[i], '\n') = '\0';
@@ -479,13 +481,13 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
         if ((*params[i]=='#') && isNumeric(params[i]+1))
         {
             addSymbol(head, name, (*IC)++, SYMBOL_CODE,intToBinary(atoi(params[i]+1)));
-            if (addressingTypeSrc)
+            if (!addressingTypeSrc)
             {
-                addressingTypeDst = TWO_ASCII;
+                addressingTypeSrc = ZERO_ASCII;
             }
             else
             {
-                addressingTypeSrc = ZERO_ASCII;
+                addressingTypeDst = ZERO_ASCII;
             }        
          }
         else if ((rNode = findNode(root, params[i])))
@@ -514,13 +516,13 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
                 else
                 {
                     /* write just one register */
-                    if (addressingTypeSrc)
+                    if (!addressingTypeSrc)
                     {
                         addressingTypeDst = THREE_ASCII;
                     }
                     else
                     {
-                        addressingTypeSrc = TWO_ASCII;
+                        addressingTypeSrc = THREE_ASCII;
                     }                    
                     strcpy(regBin, CLEAR_MEM);
                     strncpy(regBin, currBinary, 4);
@@ -533,47 +535,54 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
                     addSymbol(head, name, (*IC)++, SYMBOL_CODE, strdup(regBin));
                 }
             }
-            else if (rNode->reserved->type && strcmp(rNode->reserved->type, SYMBOL_CODE) == 0)
-            {
-                currBinary = strdup(CLEAR_MEM);
-                currOpSrc = rNode->reserved->opSrc;
-                currOpDst = rNode->reserved->opDst;
-                for (j = 0; j < FOUR_BITS; j++)
-                {
-                    currBinary[j] = rNode->reserved->binary[j+SIX_BITS];
-                }
-                currBinary[TEN_BITS]= '\0';
-
-                currBinaryInst = currBinary;
-
-            }
         }
+
+
         else if (!rNode)
         {
-            if (!checkIfLabal(params[i],root))
+
+            if (!addressingTypeSrc)
             {
-                if (addressingTypeSrc)
-                {
-                    addressingTypeDst = TWO_ASCII;
-                }
-                else
-                {
-                    addressingTypeSrc = ONE_ASCII;
-                } 
-                addSymbol(head, NULL, (*IC)++, SYMBOL_CODE, strdup(params[i]));
+                addressingTypeSrc = ONE_ASCII;
             }
-        } 
-        if (!currBinaryInst)
+            else
+            {
+                addressingTypeDst = ONE_ASCII;
+            } 
+            addSymbol(head, NULL, (*IC)++, SYMBOL_CODE, strdup(params[i]));
+        }
+        
+        printf("ddddddd %d\n",addressingTypeSrc);
+
+        if (addressingTypeSrc==ONE_ASCII)
         {
-            currBinaryInst = CLEAR_MEM;
+            
+            currParamMat = checkIfValidMatParam(paramsBackets[0]);
+            printf("%d %s\n",currParamMat,paramsBackets[0]);
+        }
+        else
+        {
+            currParamMat = checkIfValidMatParam(paramsBackets[1]);
         }
 
+        if (currParamMat==1)
+        {
+            if (addressingTypeDst)
+            {
+                addressingTypeDst = TWO_ASCII;
+            }
+            else
+            {
+                addressingTypeSrc = TWO_ASCII;
+            } 
+        }
         if (currBinaryInst)
         {
             addressingTypeString = intToBinary(addressingTypeDst-ZERO_ASCII);
+            printf("at line %d: %s\n",lineNum,addressingTypeString);
 
             if (currOpDst&&strchr(currOpDst,addressingTypeDst))
-            {
+            {               
                 currBinaryInst[6] = addressingTypeString[8];
                 currBinaryInst[7] = addressingTypeString[9];
             }
@@ -583,6 +592,7 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
                 foundErrorFirstPass = 1;
             }
             addressingTypeString = intToBinary(addressingTypeSrc-ZERO_ASCII);
+
             if (currOpSrc&&strchr(currOpSrc,addressingTypeSrc))
             {
                 currBinaryInst[4] = addressingTypeString[8];
@@ -593,13 +603,20 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
                 printf("at line %d: addressing type of the src is invalid\n",lineNum);
                 foundErrorFirstPass = 1;
             }
+
+
         }
-        printf("%s %d\n",currBinaryInst,lineNum);
         free(params[i]);
+        free(rNode);
+        printf("ddddddd %d\n",addressingTypeSrc);
+            printf("\n\n\n");
+
     }
     insertSymbolSortedByAddr(head, currName, icStart, SYMBOL_CODE, strdup(currBinaryInst));
-    
+
     free(params);
+    free(addressingTypeString);
+
     printf("\n\n\n");
 
 }
@@ -643,9 +660,9 @@ memory firstPass(reservedNode* root, FILE* file)
 
 int checkIfValidMatParam(char* param)
 {
-    int brackets = 0;
-    int foundBracket = 0;
-    char* paramTmp = strdup(param);
+    int leftBrackets = 0;
+    int rightBrackets = 0;
+    char* paramTmp = param;
     if (!paramTmp)
     {
         return -1;
@@ -655,24 +672,24 @@ int checkIfValidMatParam(char* param)
     {
         if (*paramTmp == LEFT_BRACKET)
         {
-            foundBracket=1;
-            brackets++;
+            leftBrackets++;
         }
         else if (*paramTmp == RIGHT_BRACKET)
         {
-            brackets--;
-            if (brackets < 0)
-            {
-                return 0;
-            }
+            rightBrackets++;
         }
         paramTmp++;
     }
-    if (!foundBracket)
+
+    if (leftBrackets == 2 && rightBrackets == 2)
     {
-        return -1; /* no brackets found */
+        return 1;
     }
-    return (brackets == 2) ? 1 : 0; /* valid = 1, invalid = 0 */
+    else if (leftBrackets == 0 && rightBrackets == 0)
+    {
+        return -1;
+    }
+    return 0;
 }
 
 char* countRestOfLine(char* line, int isLabal)

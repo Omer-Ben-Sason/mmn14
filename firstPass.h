@@ -47,7 +47,7 @@ int isNumeric(char* str);
 int putInDC(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC);
 char* checkIfLabal(char* labal, reservedNode* root);
 memory buildSymbols(reservedNode* root, FILE* file);
-void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head,char* name,reservedNode* root,char** lastReg);
+void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head,char* name,reservedNode* root,char** lastReg,char* inst);
 char* countRestOfLine(char* line,int isLabal);
 
 #endif 
