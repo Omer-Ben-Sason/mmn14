@@ -43,32 +43,34 @@ void initReservedWords(reservedNode** root)
         else
         {
             binary = intToBinary(j++); /* binary representation for commands */
-            if (strcmp(reserved[i],"mov")||strcmp(reserved[i],"add")||strcmp(reserved[i],"sub"))
+            if (strcmp(reserved[i],"mov")==0||strcmp(reserved[i],"add")==0||strcmp(reserved[i],"sub")==0)
             {
                 opDst = "123"; /* destination operand for mov */
                 opSrc = "0123"; /* source operand for mov */
             }
-            else if (strcmp(reserved[i],"cmp"))
+            else if (strcmp(reserved[i],"cmp")==0)
             {
                 opDst = "0123"; /* destination operand for mov */
                 opSrc = "0123"; /* source operand for mov */
             }
-            else if (strcmp(reserved[i],"lea"))
+            else if (strcmp(reserved[i],"lea")==0)
             {
                 opDst = "123"; /* destination operand for mov */
                 opSrc = "12"; /* source operand for mov */
             }
-            else if (strcmp(reserved[i],"clr")||strcmp(reserved[i],"not")||strcmp(reserved[i],"inc")||strcmp(reserved[i],"dec")||strcmp(reserved[i],"jmp")||strcmp(reserved[i],"jsr")||strcmp(reserved[i],"bne")||strcmp(reserved[i],"red"))
+            else if (strcmp(reserved[i],"clr")==0||strcmp(reserved[i],"not")==0||strcmp(reserved[i],"inc")==0||strcmp(reserved[i],"dec")==0||strcmp(reserved[i],"jmp")==0||strcmp(reserved[i],"jsr")==0||strcmp(reserved[i],"bne")==0||strcmp(reserved[i],"red")==0)
             {
                 opDst = "123"; /* destination operand for mov */
+                opSrc = NULL;
             }
-            else if (strcmp(reserved[i],"prn"))
+            else if (strcmp(reserved[i],"prn")==0)
             {
                 opDst = "0123"; /* destination operand for mov */
+                opSrc = NULL;
             }
             type = "code"; /* command type for other reserved words */
         }
-        *root = insertNode(*root, reserved[i], pData,type,opDst,opSrc,binary); /* insert each reserved word into the tree */
+        *root = insertNode(*root, reserved[i], pData,type,strdup(opDst),strdup(opSrc),binary); /* insert each reserved word into the tree */
     }
 }
 /* 

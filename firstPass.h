@@ -49,5 +49,10 @@ char* checkIfLabal(char* labal, reservedNode* root);
 memory buildSymbols(reservedNode* root, FILE* file);
 void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head,char* name,reservedNode* root,char** lastReg,char* inst);
 char* countRestOfLine(char* line,int isLabal);
+int handleData(char* curr, int lineNum, symbolNode** head, char* name, int* DC, char* type);
+
+int handleString(char* curr, int lineNum, symbolNode** head, char* name, int* DC);
+
+int handleMat(char* curr, int lineNum, symbolNode** head, char* name, int* DC);
 
 #endif 

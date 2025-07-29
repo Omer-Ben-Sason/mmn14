@@ -63,13 +63,15 @@ memory buildSymbols(reservedNode* root, FILE* file)
     int i = 0;
     int DC = DC_START;
     int IC = IC_START;
-    char** commands = NULL, *line = NULL;
+    char** commands = NULL, *PC = NULL;
     int lineNum = 0;
+
     int thereIsLabal = 0;
     reservedNode* rNode = NULL;
     char* inst = NULL, *labal = NULL;
     memory mem = {0};
     symbolNode* headDC = NULL,*headIC = NULL;
+    symbolNode *lastIC = NULL, *curr = headDC;
     int inCode = 0;
     char* lastReg = malloc(TEN_BITS + 1);
     for (i = 0; i < TEN_BITS; i++)
@@ -79,21 +81,20 @@ memory buildSymbols(reservedNode* root, FILE* file)
     lastReg[TEN_BITS] = '\0';
     fseek(file, 0, SEEK_SET);
 
-    while ((line = loadLine(file)) != NULL&&*line!=EOF&&*line!=0)
+    while ((PC = loadLine(file)) != NULL&&*PC!=EOF&&*PC!=0)
     {
         lineNum++;
-        if (line == NULL || *line == '\0' || strspn(line, " \t\r\n") == strlen(line))     
+        if (PC == NULL || *PC == '\0' || strspn(PC, " \t\r\n") == strlen(PC))     
         {
             continue;
         }
-        commands = breakLine(line);
+        commands = breakLine(PC);
         
         if ((labal = checkIfLabal(commands[0], root)))
         {
             thereIsLabal = 1;
         }
         inst = thereIsLabal ? commands[1] : commands[0];
-
         rNode = findNode(root, inst);
         if (rNode && *(rNode->reserved->name) == DOT &&!inCode)
         {
@@ -101,16 +102,27 @@ memory buildSymbols(reservedNode* root, FILE* file)
             {
                 if (thereIsLabal)
                 {
-                    putInDC(inst, countRestOfLine(line,thereIsLabal), lineNum, &headDC, labal, &DC);
+                    putInDC(inst, countRestOfLine(PC,thereIsLabal), lineNum, &headDC, labal, &DC);
                 }
             }
             else if (strcmp(inst, SYMBOL_EXT) == 0)
             {
-                addSymbol(&headDC, labal, DC, SYMBOL_EXT, 0);
-            }
-            else if (strcmp(inst, SYMBOL_EXT) == 0)
-            {
-                continue;
+                if (commands[2])
+                {
+                    labal = commands[2];
+                    printf("wanring at line %d: a labal in .extern is useless!\n",lineNum);
+                }
+                else if (commands[1])
+                {
+                    labal = commands[1];
+                }
+                else                  
+
+                {
+                    printf("at line %d: invalid extern command!\n",lineNum);
+                    foundErrorFirstPass = 1;
+                }
+                addSymbol(&headDC, labal, DC, SYMBOL_EXT, strdup(CLEAR_MEM));
             }
             else
             {
@@ -120,11 +132,12 @@ memory buildSymbols(reservedNode* root, FILE* file)
         }
         else if (findNode(root, inst)&& strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0)
         {
-            putInIC(&IC, countRestOfLine(line,thereIsLabal), lineNum, &headIC, labal, root, &lastReg,inst);
+            putInIC(&IC, countRestOfLine(PC,thereIsLabal), lineNum, &headIC, labal, root, &lastReg,inst);
         }
         else
         {
-            putInIC(&IC, countRestOfLine(line,thereIsLabal), lineNum, &headIC, labal, root, &lastReg,inst);
+            printf("at line %d: invalid directive: %s\n", lineNum, inst);
+            foundErrorFirstPass = 1;
         }
         
 
@@ -132,7 +145,24 @@ memory buildSymbols(reservedNode* root, FILE* file)
 
     }
     if (commands) free(commands);
-    if (line) free(line);
+    if (PC) free(PC);
+
+    curr = headDC;
+    while (curr)
+    {
+        curr->symbol->addr += IC;
+        curr = curr->next;
+    }
+
+    if (headIC)
+    {
+        lastIC = headIC;
+        while (lastIC->next)
+        {
+            lastIC = lastIC->next;
+        }
+        lastIC->next = headDC; /* connect DC after IC */
+    }
     mem.headDC = headDC;
     mem.headIC = headIC;
     return mem;
@@ -165,461 +195,433 @@ char* checkIfLabal(char* labal, reservedNode* root)
 int putInDC(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC)
 {
     int count = 0;
-    char* curr = restOfLine;
-    char* commanChecker = curr;
-    char tmp[BUFF_SIZE] = {0};
-    char asciiStr[ASCII_BUF_SIZE] ={0};
-    int i = 0;
-    int rows = 0, cols = 0;
-    int lastComma = 0;
+
     if (strcmp(type, SYMBOL_DATA) == 0)
     {
-        while (1)
-        {
-            
-            while (commanChecker && *commanChecker != EOL && *commanChecker != EOF && *commanChecker != 0)
-            {
-                if (*commanChecker == COMMA_ASCII)
-                {
-                    if (lastComma)
-                    {
-                        printf("at line %d: multiple commas found\n", lineNum);
-                        foundErrorFirstPass = 1;
-                    }
-                    lastComma = 1;
-                }
-                else if (*commanChecker != ' ' && *commanChecker != '\t')
-                {
-                    lastComma = 0; 
-                }
-
-                commanChecker++;
-            }
-            if(*curr == EOL||*curr == EOF||*curr == 0)
-            {
-                break;
-            }
-
-            while (*curr == ' ' || *curr == '\t')
-            {
-                curr++;
-            }
-
-            i = 0;
-            while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+')
-            {
-                tmp[i++] = *curr;
-                curr++;
-            }
-            if (i > 0)
-            {
-
-                tmp[i] = '\0';
-                if (isNumeric(tmp))
-                {
-                    addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, intToBinary(atoi(tmp)));
-                    count++;
-                    name = NULL;
-                }
-                else
-                {
-                    printf("at line %d: invalid number: %s\n", lineNum, tmp);
-                    foundErrorFirstPass = 1; 
-                }
-            }
-            while (*curr == ' ' || *curr == '\t' || *curr == COMMA_ASCII)
-            {
-                curr++;
-            }
-            
-            i = 0;
-            while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+')
-            {
-                tmp[i++] = *curr;
-                curr++;
-            }
-
-            if (i > 0)
-            {
-                tmp[i] = '\0';
-                if (isNumeric(tmp))
-                {
-                    addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, intToBinary(atoi(tmp)));
-                    count++;
-                    name = NULL;
-                }
-                else
-                {
-                    printf("at line %d: invalid number: %s\n", lineNum, tmp);
-                    foundErrorFirstPass = 1;
-                }
-            }
-
-            while (*curr == ' ' || *curr == '\t')
-            {
-                curr++;
-            }
-        }
+        count = handleData(restOfLine, lineNum, head, name, DC, type);
     }
     else if (strcmp(type, SYMBOL_STRING) == 0)
     {
-        while (*curr == ' ' || *curr == '\t')
+        count = handleString(restOfLine, lineNum, head, name, DC);
+    }
+    else if (strcmp(type, SYMBOL_MAT) == 0)
+    {
+        count = handleMat(restOfLine, lineNum, head, name, DC);
+    }
+
+    if (*(restOfLine + strlen(restOfLine) - 1) == COMMA_ASCII)
+    {
+        printf("at line %d: trailing comma without value\n", lineNum);
+        foundErrorFirstPass = 1;
+    }
+
+    return count;
+}
+
+int handleData(char* curr, int lineNum, symbolNode** head, char* name, int* DC, char* type)
+{
+    char* commanChecker = curr;
+    char tmp[BUFF_SIZE] = {0};
+    int count = 0, lastComma = 0, i = 0;
+
+    while (commanChecker && *commanChecker != EOL && *commanChecker != EOF && *commanChecker != 0)
+    {
+        if (*commanChecker == COMMA_ASCII)
         {
+            if (lastComma)
+            {
+                printf("at line %d: multiple commas found\n", lineNum);
+                foundErrorFirstPass = 1;
+            }
+            lastComma = 1;
+        }
+        else if (*commanChecker != ' ' && *commanChecker != '\t') lastComma = 0;
+
+        commanChecker++;
+    }
+
+    while (*curr == ' ' || *curr == '\t') curr++;
+
+    while (*curr != EOL && *curr != EOF && *curr != 0)
+    {
+        i = 0;
+        while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++;
+        if (i > 0)
+        {
+            tmp[i] = '\0';
+            if (isNumeric(tmp))
+            {
+                addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, intToBinary(atoi(tmp)));
+                count++;
+                name = NULL;
+            }
+            else
+            {
+                printf("at line %d: invalid number: %s\n", lineNum, tmp);
+                foundErrorFirstPass = 1;
+            }
+        }
+        while (*curr == ' ' || *curr == '\t' || *curr == COMMA_ASCII) curr++;
+    }
+
+    return count;
+}
+
+int handleString(char* curr, int lineNum, symbolNode** head, char* name, int* DC)
+{
+    int count = 0;
+    char asciiStr[ASCII_BUF_SIZE] = {0};
+
+    while (*curr == ' ' || *curr == '\t') curr++;
+
+    if (*curr == '"')
+    {
+        curr++;
+        while (*curr != '"' && *curr != '\0')
+        {
+            if (*curr == EOL || *curr == EOF)
+            {
+                printf("at line %d: missing closing quote\n", lineNum);
+                foundErrorFirstPass = 1;
+                break;
+            }
+
+            sprintf(asciiStr, "%d", *curr);
+            addSymbol(head, (name) ? name : NULL, (*DC)++, SYMBOL_DATA, intToBinary(atoi(asciiStr)));
+            count++;
+            name = NULL;
             curr++;
         }
 
         if (*curr == '"')
         {
-            curr++;
-            while (*curr != '"' && *curr != '\0')
-            {
-                if (*curr == EOL || *curr == EOF)
-                {
-                    printf("at line %d: missing closing quote\n", lineNum);
-                    foundErrorFirstPass = 1;
-                }
-                sprintf(asciiStr, "%d", *curr);
-                
-                addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL,  intToBinary(atoi(strdup(asciiStr))));
-                count++;
-                name = NULL;
-                curr++;
-            }
-
-            if (*curr == '"')
-            {
-                addSymbol(head, NULL, (*DC)++, type, 0);
-                count++;
-            }
-            else
-            {
-                printf("at line %d: missing closing quote\n", lineNum);
-                foundErrorFirstPass = 1;
-            }
+            addSymbol(head, NULL, (*DC)++, SYMBOL_DATA, strdup(CLEAR_MEM));
+            count++;
         }
         else
         {
-            printf("at line %d: invalid string format\n", lineNum);
+            printf("at line %d: missing closing quote\n", lineNum);
             foundErrorFirstPass = 1;
         }
     }
-
-    else if (strcmp(type, SYMBOL_MAT) == 0)
+    else
     {
-        while (commanChecker && *commanChecker != EOL && *commanChecker != EOF && *commanChecker != 0)
-        {
-            if (*commanChecker == COMMA_ASCII)
-            {
-                if (lastComma)
-                {
-                    printf("at line %d: multiple commas found\n", lineNum);
-                    foundErrorFirstPass = 1;
-                }
-                lastComma = 1;
-            }
-            else if (*commanChecker != ' ' && *commanChecker != '\t')
-            {
-                lastComma = 0; 
-            }
-
-            commanChecker++;
-        }
-        while (*curr == ' ' || *curr == '\t')
-        {
-            curr++;
-        }
-        if (*curr == LEFT_BRACKET)
-        {
-            curr++;
-            i = 0;
-
-            while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+')
-            {
-                tmp[i++] = *curr;
-                curr++;
-            }
-            curr++;
-            if (i > 0)
-            {
-                tmp[i] = '\0';
-                if (isNumeric(tmp))
-                {
-                    rows = atoi(tmp);
-                }
-                else
-                {
-                    printf("at line %d: invalid number of rows: %s\n", lineNum, tmp);
-                    foundErrorFirstPass = 1;
-                }
-            }
-            while (*curr == ' ' || *curr == '\t'|| *curr == LEFT_BRACKET)
-            {
-                curr++;
-            }            
-            i = 0;
-            while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+')
-            {
-                tmp[i] = *curr;
-                curr++;
-                i++;
-                
-            }
-            if (i > 0)
-            {
-                tmp[i] = '\0';
-                if (isNumeric(tmp))
-                {
-                    cols = atoi(tmp);
-                }
-                else
-                {
-                    printf("at line %d: invalid number of columns: %s\n", lineNum, tmp);
-                    foundErrorFirstPass = 1;
-                }
-            }
-            curr++;
-            while (*curr == ' ' || *curr == '\t')
-            {
-                curr++;
-            }
-            count = 0;
-
-            while (1)
-            {
-                if (*curr == EOL||*curr == EOF||*curr == 0 ||  count >= rows * cols)
-                {
-                    break;
-                }
-                
-                while (*curr == ' ' || *curr == '\t'|| *curr == COMMA_ASCII)
-                {
-                    curr++;
-                }
-                
-
-                i = 0;
-                
-
-                while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == MINUS_ASCII || *curr == PLUS_ASCII)
-                {
-                    tmp[i++] = *curr;
-                    curr++;
-                }
-                
-                if (i > 0)
-                {
-                    tmp[i] = '\0';
-                    putInDC(SYMBOL_DATA, tmp, lineNum, head, name, DC);
-                    name = NULL;  
-                    count++;          
-                }
-            }
-            if (count < rows * cols)
-            {
-                while (count < rows * cols)
-                {
-                    addSymbol(head, (name) ? name : NULL, (*DC)++, SYMBOL_DATA, 0);
-                    count++;
-                    name = NULL;
-                }
-            }
-        }
-        else
-        {
-            printf("at line %d: invalid mat format\n", lineNum);
-            foundErrorFirstPass = 1;
-        }
-    }
-    if (*(curr - 1) == COMMA_ASCII)
-    {
-        printf("at line %d: trailing comma without value\n", lineNum);
+        printf("at line %d: invalid string format\n", lineNum);
         foundErrorFirstPass = 1;
     }
+
     return count;
 }
-void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* name, reservedNode* root, char** lastReg,char* inst)
+
+int handleMat(char* curr, int lineNum, symbolNode** head, char* name, int* DC)
+{
+    char tmp[BUFF_SIZE] = {0};
+    int rows = 0, cols = 0, count = 0, i = 0;
+    char* commanChecker = curr;
+    int lastComma = 0;
+
+    while (commanChecker && *commanChecker != EOL && *commanChecker != EOF && *commanChecker != 0)
+    {
+        if (*commanChecker == COMMA_ASCII)
+        {
+            if (lastComma)
+            {
+                printf("at line %d: multiple commas found\n", lineNum);
+                foundErrorFirstPass = 1;
+            }
+            lastComma = 1;
+        }
+        else if (*commanChecker != ' ' && *commanChecker != '\t') lastComma = 0;
+        commanChecker++;
+    }
+
+    while (*curr == ' ' || *curr == '\t') curr++;
+    if (*curr != LEFT_BRACKET)
+    {
+        printf("at line %d: invalid mat format\n", lineNum);
+        foundErrorFirstPass = 1;
+        return 0;
+    }
+
+    curr++; i = 0;
+    while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++;
+    curr++;
+    if (i > 0 && isNumeric(tmp)) rows = atoi(tmp);
+    else
+    {
+        printf("at line %d: invalid number of rows: %s\n", lineNum, tmp);
+        foundErrorFirstPass = 1;
+    }
+
+    while (*curr == ' ' || *curr == '\t'|| *curr == LEFT_BRACKET) curr++;
+
+    i = 0;
+    while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++;
+
+    if (i > 0 && isNumeric(tmp)) cols = atoi(tmp);
+    else
+    {
+        printf("at line %d: invalid number of columns: %s\n", lineNum, tmp);
+        foundErrorFirstPass = 1;
+    }
+
+    curr++;
+    while (*curr == ' ' || *curr == '\t') curr++;
+
+    while (*curr != EOL && *curr != EOF && *curr != 0 && count < rows * cols)
+    {
+        while (*curr == ' ' || *curr == '\t'|| *curr == COMMA_ASCII) curr++;
+
+        i = 0;
+        while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == MINUS_ASCII || *curr == PLUS_ASCII)
+        {
+            tmp[i++] = *curr++;
+        }
+
+        if (i > 0)
+        {
+            tmp[i] = '\0';
+            putInDC(SYMBOL_DATA, tmp, lineNum, head, name, DC);
+            name = NULL;
+            count++;
+        }
+    }
+
+    while (count < rows * cols)
+    {
+        addSymbol(head, (name) ? name : NULL, (*DC)++, SYMBOL_DATA, 0);
+        count++;
+        name = NULL;
+    }
+
+    return count;
+}
+
+void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* name, reservedNode* root, char** lastReg, char* inst)
 {
     int i = 0, j = 0;
-    char** params = breakToParams(restOfLine,1),**paramsBackets = breakToParams(restOfLine,0);
+    char** params = breakToParams(restOfLine, 1);
+    char** paramsBackets = breakToParams(restOfLine, 0);
     reservedNode* rNode = NULL, * rNodeNext = NULL;
-    char* currBinary = NULL,*currBinaryInst = NULL;
+    char* currBinary = NULL, * currBinaryInst = NULL;
     char fullRegBin[TEN_BITS + 1];
     int currParamMat = 0;
-    int icStart=*IC;
-    char addressingTypeSrc = -1,addressingTypeDst = -1;
+    int icStart = *IC;
+    char addressingTypeSrc = -1, addressingTypeDst = -1;
     char* addressingTypeString = NULL;
     char regBin[TEN_BITS + 1];
-    char* currOpDst = NULL,*currOpSrc = NULL,*currName = name;
+    char* currOpDst = NULL, * currOpSrc = NULL, * currName = name;
+
     (*IC)++;
-    if (findNode(root,inst)->reserved->type && strcmp(findNode(root,inst)->reserved->type, SYMBOL_CODE) == 0)
+
+
+    if (findNode(root, inst)->reserved->type && strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0)
     {
         currBinary = strdup(CLEAR_MEM);
-        currOpSrc = findNode(root,inst)->reserved->opSrc;
-        currOpDst = findNode(root,inst)->reserved->opDst;
+        currOpSrc = findNode(root, inst)->reserved->opSrc;
+        currOpDst = findNode(root, inst)->reserved->opDst;
+
         for (j = 0; j < FOUR_BITS; j++)
         {
-            currBinary[j] = findNode(root,inst)->reserved->binary[j+SIX_BITS];
+            currBinary[j] = findNode(root, inst)->reserved->binary[j + SIX_BITS];
         }
-        currBinary[TEN_BITS]= '\0';
+
+        currBinary[TEN_BITS] = '\0';
         currBinaryInst = currBinary;
 
     }
+
     for (i = 0; params[i] != NULL; i++)
     {
-        printf("%s",params[i]);
-        if ((currParamMat = checkIfValidMatParam(params[i])) == 0)
-        {
-            printf("at line %d: invalid mat format, expected [rows][cols]\n", lineNum);
-            foundErrorFirstPass = 1;
-        }
-
         if (params[i] && strchr(params[i], '\n'))
         {
             *strchr(params[i], '\n') = '\0';
         }
         
-        if ((*params[i]=='#') && isNumeric(params[i]+1))
+        currParamMat = (addressingTypeSrc==-1)?checkIfValidMatParam(paramsBackets[0]):checkIfValidMatParam(paramsBackets[1]);
+        if (currParamMat == 0)
         {
-            addSymbol(head, name, (*IC)++, SYMBOL_CODE,intToBinary(atoi(params[i]+1)));
-            if (!addressingTypeSrc)
+            printf("at line %d: invalid mat format, expected [rows][cols]\n", lineNum);
+            foundErrorFirstPass = 1;
+        }
+
+        if ((*params[i] == '#') && isNumeric(params[i] + 1))
+        {
+            addSymbol(head, NULL, (*IC)++, SYMBOL_CODE, intToBinary(atoi(params[i] + 1)));
+
+            if (addressingTypeSrc == -1)
             {
-                addressingTypeSrc = ZERO_ASCII;
+                if (!(params[1] || strlen(params[1]) == 0))
+                {
+                    addressingTypeDst = ZERO_ASCII;
+                }
+                else
+                {
+                    addressingTypeSrc = ZERO_ASCII;
+                }
             }
             else
             {
                 addressingTypeDst = ZERO_ASCII;
-            }        
-         }
-        else if ((rNode = findNode(root, params[i])))
+            }
+            continue;
+        }
+
+        rNode = findNode(root, params[i]);
+
+        if (rNode && rNode->reserved->type && strcmp(rNode->reserved->type, REGISTER_SYMBOL) == 0)
         {
-            if (rNode->reserved->type && strcmp(rNode->reserved->type, REGISTER_SYMBOL) == 0)
+            currBinary = rNode->reserved->binary + SIX_BITS;
+
+            if (params[i + 1])
             {
-                currBinary = rNode->reserved->binary + SIX_BITS;
-                if (params[i + 1])
+                rNodeNext = findNode(root, params[i + 1]);
+            }
+
+            if (rNodeNext && rNodeNext->reserved && strcmp(rNodeNext->reserved->type, REGISTER_SYMBOL) == 0)
+            {
+
+            if (addressingTypeSrc == -1)
+            {
+                if (!currParamMat)
                 {
-                    rNodeNext = findNode(root, params[i + 1]);
-                }
-                if (rNodeNext && rNodeNext->reserved && strcmp(rNodeNext->reserved->type, REGISTER_SYMBOL) == 0)
-                {
-                    strncpy(fullRegBin, currBinary, FOUR_BITS);
-                    strncpy(fullRegBin + FOUR_BITS, rNodeNext->reserved->binary + SIX_BITS, FOUR_BITS);
-                    fullRegBin[8] = '0';
-                    fullRegBin[9] = '0';
-                    fullRegBin[10] = '\0';
-                    if (name)
-                    {
-                        name = NULL;
-                    }
-                    addSymbol(head, name, (*IC)++, SYMBOL_CODE, strdup(fullRegBin));
-                    i++; /* skip next param (already used) */
+                    addressingTypeSrc = TWO_ASCII;
                 }
                 else
                 {
-                    /* write just one register */
-                    if (!addressingTypeSrc)
-                    {
-                        addressingTypeDst = THREE_ASCII;
-                    }
-                    else
-                    {
-                        addressingTypeSrc = THREE_ASCII;
-                    }                    
-                    strcpy(regBin, CLEAR_MEM);
-                    strncpy(regBin, currBinary, 4);
-                    for (j = FOUR_BITS; j < TEN_BITS; j++) regBin[j] = '0';
-                    regBin[10] = '\0';
-                    if (name)
-                    {
-                        name = NULL;
-                    }
-                    addSymbol(head, name, (*IC)++, SYMBOL_CODE, strdup(regBin));
+                    addressingTypeSrc = THREE_ASCII;
+                    addressingTypeDst = THREE_ASCII; 
                 }
             }
-        }
-
-
-        else if (!rNode)
-        {
-
-            if (!addressingTypeSrc)
-            {
-                addressingTypeSrc = ONE_ASCII;
-            }
             else
-            {
-                addressingTypeDst = ONE_ASCII;
-            } 
-            addSymbol(head, NULL, (*IC)++, SYMBOL_CODE, strdup(params[i]));
-        }
-        
-        printf("ddddddd %d\n",addressingTypeSrc);
-
-        if (addressingTypeSrc==ONE_ASCII)
-        {
-            
-            currParamMat = checkIfValidMatParam(paramsBackets[0]);
-            printf("%d %s\n",currParamMat,paramsBackets[0]);
-        }
-        else
-        {
-            currParamMat = checkIfValidMatParam(paramsBackets[1]);
-        }
-
-        if (currParamMat==1)
-        {
-            if (addressingTypeDst)
             {
                 addressingTypeDst = TWO_ASCII;
             }
+
+                strncpy(fullRegBin, currBinary, FOUR_BITS);
+                strncpy(fullRegBin + FOUR_BITS, rNodeNext->reserved->binary + SIX_BITS, FOUR_BITS);
+                fullRegBin[8] = '0';
+                fullRegBin[9] = '0';
+                fullRegBin[10] = '\0';
+                name = NULL;
+                addSymbol(head, name, (*IC)++, SYMBOL_CODE, strdup(fullRegBin));
+                i++;
+            }
             else
             {
-                addressingTypeSrc = TWO_ASCII;
-            } 
+                if (addressingTypeSrc == -1 && !(params[1] == NULL || strlen(params[1]) == 0))
+                {
+                    addressingTypeSrc = THREE_ASCII;
+
+                    /* src goes in bits 0-3 */
+                    strncpy(regBin, currBinary, FOUR_BITS);
+                    for (j = FOUR_BITS; j < TEN_BITS; j++) regBin[j] = '0';
+                }
+                else
+                {
+                    addressingTypeDst = THREE_ASCII;
+
+                    for (j = 0; j < FOUR_BITS; j++) regBin[j] = '0';
+                    strncpy(regBin + FOUR_BITS, currBinary, FOUR_BITS);
+                    for (j = EIGHT_BITS; j < TEN_BITS; j++) regBin[j] = '0';
+                }
+
+                
+
+                regBin[10] = '\0';
+                name = NULL;
+                addSymbol(head, name, (*IC)++, SYMBOL_CODE, strdup(regBin));
+            }
+
+            continue;
         }
-        if (currBinaryInst)
+
+        if (addressingTypeSrc == -1)
         {
-            addressingTypeString = intToBinary(addressingTypeDst-ZERO_ASCII);
-            printf("at line %d: %s\n",lineNum,addressingTypeString);
-
-            if (currOpDst&&strchr(currOpDst,addressingTypeDst))
-            {               
-                currBinaryInst[6] = addressingTypeString[8];
-                currBinaryInst[7] = addressingTypeString[9];
-            }
-            else if (currOpDst)
+            if (checkIfValidMatParam(paramsBackets[0])==1)
             {
-                printf("at line %d: addressing type of the dst is invalid\n",lineNum);
-                foundErrorFirstPass = 1;
+                addressingTypeSrc = TWO_ASCII;
             }
-            addressingTypeString = intToBinary(addressingTypeSrc-ZERO_ASCII);
-
-            if (currOpSrc&&strchr(currOpSrc,addressingTypeSrc))
+            else if (params[i] != NULL || strlen(params[i]) != 0)
             {
-                currBinaryInst[4] = addressingTypeString[8];
-                currBinaryInst[5] = addressingTypeString[9];
+                addressingTypeSrc = ONE_ASCII;
             }
-            else if (currOpSrc)
+
+            if ((params[1] == NULL || strlen(params[1]) == 0|| *params[1] == 0|| *params[1] == '\t'|| *params[1] == ' '))
             {
-                printf("at line %d: addressing type of the src is invalid\n",lineNum);
-                foundErrorFirstPass = 1;
+                addressingTypeDst = addressingTypeSrc;
+                addressingTypeSrc = -1;
             }
-
-
         }
-        free(params[i]);
-        free(rNode);
-        printf("ddddddd %d\n",addressingTypeSrc);
-            printf("\n\n\n");
+        else
+        {
+            if (checkIfValidMatParam(paramsBackets[1])==1)
+            {   
+                addressingTypeDst = TWO_ASCII;
+            }
+            else if (!(params[i] == NULL || strlen(params[i]) == 0))
+            {
+                addressingTypeDst = ONE_ASCII;
+            }
+        }
+
+        if (params[i] && strlen(params[i]) > 0)
+        {
+            addSymbol(head, NULL, (*IC)++, SYMBOL_CODE, strdup(params[i]));
+        }
+        if (params[1] == NULL || strlen(params[1]) == 0|| *params[1] == 0)
+        {
+            addressingTypeDst = addressingTypeSrc;
+            addressingTypeSrc = ZERO_ASCII; 
+        }
 
     }
-    insertSymbolSortedByAddr(head, currName, icStart, SYMBOL_CODE, strdup(currBinaryInst));
 
+    if ((params[1] == NULL || strlen(params[1]) == 0) || addressingTypeSrc == -1)
+    {
+        addressingTypeSrc = ZERO_ASCII;
+    }
+    if (currBinaryInst)
+    {
+        addressingTypeString = intToBinary(addressingTypeDst - ZERO_ASCII);
+
+        if (currOpDst && strchr(currOpDst, addressingTypeDst))
+        {
+            currBinaryInst[6] = addressingTypeString[8];
+            currBinaryInst[7] = addressingTypeString[9];
+        }
+        else if (params[1]!=NULL)
+        {
+            printf("at line %d: dst param is invalid!\n",lineNum);
+            foundErrorFirstPass = 1;
+        }
+
+
+        addressingTypeString = intToBinary(addressingTypeSrc - ZERO_ASCII);
+        if (currOpSrc && strchr(currOpSrc, addressingTypeSrc))
+        {
+            
+            currBinaryInst[4] = addressingTypeString[8];
+            currBinaryInst[5] = addressingTypeString[9];
+        }
+        else if (params[0]!=NULL&&currOpSrc)
+        {
+            printf("at line %d: src param is invalid!\n",lineNum);
+            foundErrorFirstPass = 1;
+        }
+    }
+
+    if (currBinaryInst)
+    {
+        insertSymbolSortedByAddr(head, currName, icStart, SYMBOL_CODE, strdup(currBinaryInst));
+    }
+
+    for (i = 0; params[i]; i++) free(params[i]);
     free(params);
+    free(paramsBackets);
     free(addressingTypeString);
-
-    printf("\n\n\n");
-
 }
+
 
 int isNumeric(char* str)
 {
@@ -645,6 +647,7 @@ int isNumeric(char* str)
 memory firstPass(reservedNode* root, FILE* file)
 {
     memory mem = {0};
+
     if (foundErrorFirstPass)
     {
         printf("Errors found in first pass, aborting symbol table creation.\n");
@@ -695,10 +698,15 @@ int checkIfValidMatParam(char* param)
 char* countRestOfLine(char* line, int isLabal)
 {
     int wordCount = isLabal ? 2 : 1;
+
+    /* skip leading whitespace */
+    while (*line && (*line == ' ' || *line == '\t')) line++;
+
+    /* skip the first 1 or 2 words */
     while (*line && wordCount > 0)
     {
-        while (*line && (*line != ' ' && *line != '\t')) line++; 
-        while (*line && (*line == ' ' || *line == '\t')) line++; 
+        while (*line && *line != ' ' && *line != '\t') line++; /* skip word */
+        while (*line && (*line == ' ' || *line == '\t')) line++; /* skip spaces after */
         wordCount--;
     }
 
