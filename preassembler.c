@@ -12,9 +12,9 @@ void initReservedWords(reservedNode** root)
     char* reserved[] = { /* list of reserved keywords */
         "r3", "r1", "r5", "r0", "r4", "r7", "r2", "r6", 
         ".data", ".entry", ".extern", ".mat", ".string",
-        "mov", "cmp", "add", "sub", "not", 
-        "clr", "lea", "inc", "dec", "jmp",
-        "bne", "red", "prn", "jsr", "rts", "stop" 
+        "mov", "cmp", "add", "sub", "lea", 
+        "clr", "not", "inc", "dec", "jmp",
+        "bne", "jsr", "red", "prn", "rts", "stop" 
     };
 
     int count = sizeof(reserved) / sizeof(reserved[0]); /* total number of reserved words */
@@ -73,110 +73,7 @@ void initReservedWords(reservedNode** root)
         *root = insertNode(*root, reserved[i], pData,type,strdup(opDst),strdup(opSrc),binary); /* insert each reserved word into the tree */
     }
 }
-/* 
- * turns an integer into its binary representation
- * Input: integer number
- *  * Output: integer representing the binary number
- */
-char* intToBinary(int num)
-{
-    char* binary = (char*)malloc(EVLEVEN_BIT); /* 10 bits + '\0' */
-    int bits = EVLEVEN_BIT-1;
-    unsigned int mask = (1 << bits) - 1; 
-    int i = 0;
 
-    if (!binary)
-    {
-        return NULL;
-    }
-
-    num &= mask; 
-
-    binary[bits] = '\0';
-    for (i = bits - 1; i >= 0; i--)
-    {
-        binary[i] = (num & 1) ? '1' : '0';
-        num >>= 1;
-    }
-
-    return binary;
-}
-
-
-
-
-/* 
- * Reads a line from a file and returns a dynamically allocated string 
- * Input: pointer to input file
- * Output: dynamically allocated line string or NULL
- */
-char* loadLine(FILE* file)
-{
-    char* line = (char*)malloc(LEN * sizeof(char)); /* buffer to hold the line */
-    if (!line)
-    {
-        printf("Memory allocation failed\n");
-        return 0;
-    }
-
-    if (fgets(line, LEN, file)) /* read line from file */
-    {
-        return line;
-    }
-
-    free(line);
-    return NULL;
-}
-
-/* 
- * Splits a line into tokens (words), returns a dynamically allocated array of words 
- * Input: string line
- * Output: dynamically allocated array of strings (tokens)
- */
-char** breakLine(char* line) 
-{
-    int capacity = 10; /* initial capacity for words array */
-    int numWords = 0; /* number of words found */
-    char* token = NULL, *tmp = strdup(line); /* temporary line copy for tokenizing */
-    char** words = (char**)malloc(capacity * sizeof(char*)); /* array of word pointers */
-
-    if (!words) 
-    {
-        printf("Memory allocation failed\n");
-        return NULL;
-    }
-
-    token = strtok(tmp, " \t\n"); /* first token */
-    while (token != NULL) 
-    {
-        if (numWords >= capacity) 
-        {
-            capacity *= 2; /* increase capacity */
-            words = (char**)realloc(words, capacity * sizeof(char*));
-            if (!words) 
-            {
-                printf("Memory reallocation failed\n");
-                return NULL;
-            }
-        }
-
-        words[numWords] = (char*)malloc(strlen(token) + 1); /* allocate memory for word */
-        if (!words[numWords]) 
-        {
-            printf("Memory allocation failed for word\n");
-            return NULL;
-        }
-        strcpy(words[numWords], token); /* copy token */
-        numWords++;
-
-        token = strtok(NULL, " \t\n"); /* next token */
-    }
-
-    free(tmp);
-    words[numWords] = NULL; /* mark end of words */
-
-    return words;
-}
 
 /* 
  * Replaces macro usages in the file with their actual content 
@@ -210,24 +107,6 @@ void replaceMcro(FILE* file, reservedNode* root)
     }
 
     fclose(outputFile);
-}
-
-/* 
- * Frees dynamically allocated array of strings 
- * Input: array of strings
- * Output: none
- */
-void freeWords(char** words) 
-{
-    int i = 0;
-    if (words) 
-    {
-        for (i = 0; words[i] != NULL; i++) 
-        {
-            free(words[i]); /* free each word */
-        }
-        free(words); /* free array */
-    }
 }
 
 /* 

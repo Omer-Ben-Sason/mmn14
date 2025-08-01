@@ -113,8 +113,9 @@ reservedNode* findNode(reservedNode* root, char* name)
 {
     int cmp = 0;
     if (!root)
+    {
         return 0;
-
+    }
     cmp = strcmp(name, root->reserved->name);
 
     if (cmp == 0)

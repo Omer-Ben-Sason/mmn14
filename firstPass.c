@@ -1,421 +1,454 @@
 #include "firstPass.h"
 
-int foundErrorFirstPass = 0; 
-char** breakToParams(char* line, int breakBrackets) 
+int foundErrorFirstPass = 0; /* global error flag */
+
+
+/*
+the func: buildSymbols
+input: root of reserved words, and the source file
+output: memory struct containing symbol tables for DC and IC
+*/
+memory buildSymbols(reservedNode* root, FILE* file) /* build symbol tables from source */
 {
-    int paramCount = 0;
-    char* token = NULL;
-    char* lineCopy = NULL;
-    char** params = (char**)malloc(MAX_PARAMS * sizeof(char*)); 
+    int i = 0; /* index variable */
+    int DC = DC_START; /* data counter */
+    int IC = IC_START; /* instruction counter */
+    char** commands = NULL; /* command tokens */
+    char* PC = NULL; /* current line pointer */
+    int lineNum = 0; /* current line number */
 
-    if (!params) 
-    {
-        printf("Memory allocation failed for params\n");
-        return NULL;
-    }
+    int thereIsLabal = 0; /* flag for label presence */
+    reservedNode* rNode = NULL; /* current reserved word */
+    char* inst = NULL; /* instruction */
+    char* labal = NULL; /* label */
+    memory mem = {0}; /* final memory output */
+    symbolNode* headDC = NULL; /* DC list head */
+    symbolNode* headIC = NULL; /* IC list head */
+    symbolNode* lastIC = NULL; /* last node in IC */
+    symbolNode* curr = headDC; /* current node */
+    int inCode = 0; /* flag if inside code */
+    char* lastReg = malloc(TEN_BITS + 1); /* register tracker */
 
-    lineCopy = strdup(line);
-    if (!lineCopy)
+    for (i = 0; i < TEN_BITS; i++) /* initialize reg binary to zero */
     {
-        printf("Memory allocation failed for line copy\n");
-        free(params);
-        return NULL;
+        lastReg[i] = '0'; /* fill with zeros */
     }
+    lastReg[TEN_BITS] = '\0'; /* null terminate */
 
-    if (breakBrackets)
-    {
-        token = strtok(lineCopy, ",[] \t"); 
-    }
-    else
-    {
-        token = strtok(lineCopy, ", \t"); 
-    }
+    fseek(file, 0, SEEK_SET); /* rewind file */
 
-    while (token != NULL && paramCount < MAX_PARAMS) 
+    while ((PC = loadLine(file)) != NULL && *PC != EOF && *PC != 0) /* read each line */
     {
-        params[paramCount] = (char*)malloc(strlen(token) + 1);  
-        if (!params[paramCount])
+        lineNum++; /* increase line number */
+
+        if (PC == NULL || *PC == '\0' || strspn(PC, " \t\r\n") == strlen(PC)) /* skip empty/whitespace lines */
         {
-            printf("Memory allocation failed for param\n");
-            break;
+            continue; /* next iteration */
         }
 
-        strcpy(params[paramCount], token);  
-        paramCount++;
+        commands = breakLine(PC); /* split line */
 
-        if (breakBrackets)
+        if ((labal = checkIfLabal(commands[0], root, lineNum, headDC, headIC))) /* check label */
         {
-            token = strtok(NULL, ",[] \t"); 
+            thereIsLabal = 1; /* mark label presence */
         }
-        else
-        {
-            token = strtok(NULL, ", \t"); 
-        } 
-    }
 
-    params[paramCount] = NULL; 
-    free(lineCopy);
-    return params;
-}
+        inst = thereIsLabal ? commands[1] : commands[0]; /* get instruction */
+        rNode = findNode(root, inst); /* find reserved */
 
-memory buildSymbols(reservedNode* root, FILE* file)
-{
-    int i = 0;
-    int DC = DC_START;
-    int IC = IC_START;
-    char** commands = NULL, *PC = NULL;
-    int lineNum = 0;
-
-    int thereIsLabal = 0;
-    reservedNode* rNode = NULL;
-    char* inst = NULL, *labal = NULL;
-    memory mem = {0};
-    symbolNode* headDC = NULL,*headIC = NULL;
-    symbolNode *lastIC = NULL, *curr = headDC;
-    int inCode = 0;
-    char* lastReg = malloc(TEN_BITS + 1);
-    for (i = 0; i < TEN_BITS; i++)
-    {
-        lastReg[i] = '0';
-    }
-    lastReg[TEN_BITS] = '\0';
-    fseek(file, 0, SEEK_SET);
-
-    while ((PC = loadLine(file)) != NULL&&*PC!=EOF&&*PC!=0)
-    {
-        lineNum++;
-        if (PC == NULL || *PC == '\0' || strspn(PC, " \t\r\n") == strlen(PC))     
+        if (rNode && *(rNode->reserved->name) == DOT && !inCode) /* directive line */
         {
-            continue;
-        }
-        commands = breakLine(PC);
-        
-        if ((labal = checkIfLabal(commands[0], root)))
-        {
-            thereIsLabal = 1;
-        }
-        inst = thereIsLabal ? commands[1] : commands[0];
-        rNode = findNode(root, inst);
-        if (rNode && *(rNode->reserved->name) == DOT &&!inCode)
-        {
-            if (strcmp(inst, SYMBOL_DATA) == 0 || strcmp(inst, SYMBOL_MAT) == 0 || strcmp(inst, SYMBOL_STRING) == 0)
+            if (strcmp(inst, SYMBOL_DATA) == 0 || strcmp(inst, SYMBOL_MAT) == 0 || strcmp(inst, SYMBOL_STRING) == 0) /* data types */
             {
-                if (thereIsLabal)
+                if (thereIsLabal) /* label before directive */
                 {
-                    putInDC(inst, countRestOfLine(PC,thereIsLabal), lineNum, &headDC, labal, &DC);
+                    putInDC(inst, countRestOfLine(PC, thereIsLabal), lineNum, &headDC, labal, &DC); /* insert to DC */
                 }
             }
-            else if (strcmp(inst, SYMBOL_EXT) == 0)
+            else if (strcmp(inst, SYMBOL_EXT) == 0) /* extern case */
+            {
+                if (commands[2]) /* extra label */
+                {
+                    labal = commands[2]; /* override */
+                    printf("wanring at line %d: a labal in .extern is useless!\n", lineNum); /* warning */
+                }
+                else if (commands[1]) /* get external label */
+                {
+                    labal = commands[1]; /* assign */
+                }
+                else /* invalid extern */
+                {
+                    printf("at line %d: invalid extern command!\n", lineNum); /* error */
+                    foundErrorFirstPass = 1; /* set error */
+                }
+
+                addSymbol(&headDC, labal, DC++, SYMBOL_EXT, strdup(CLEAR_MEM)); /* add extern */
+            }
+            else if (strcmp(inst, SYMBOL_ENT) == 0)
             {
                 if (commands[2])
                 {
-                    labal = commands[2];
-                    printf("wanring at line %d: a labal in .extern is useless!\n",lineNum);
+                    printf("warning at line %d: a label in .entry is useless!\n", lineNum);
                 }
                 else if (commands[1])
                 {
                     labal = commands[1];
+                    addSymbol(&headDC, NULL, DC++, SYMBOL_ENT, labal); /* store for second pass */
                 }
-                else                  
-
+                else
                 {
-                    printf("at line %d: invalid extern command!\n",lineNum);
+                    printf("at line %d: invalid entry command!\n", lineNum);
                     foundErrorFirstPass = 1;
                 }
-                addSymbol(&headDC, labal, DC, SYMBOL_EXT, strdup(CLEAR_MEM));
             }
-            else
+            else /* unknown directive */
             {
-                printf("at line %d: invalid directive: %s\n", lineNum, inst);
-                foundErrorFirstPass = 1;
+                printf("at line %d: invalid directive: %s\n", lineNum, inst); /* error */
+                foundErrorFirstPass = 1; /* mark error */
             }
         }
-        else if (findNode(root, inst)&& strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0)
+        else if (findNode(root, inst) && strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0) /* instruction */
         {
-            putInIC(&IC, countRestOfLine(PC,thereIsLabal), lineNum, &headIC, labal, root, &lastReg,inst);
+            putInIC(&IC, countRestOfLine(PC, thereIsLabal), lineNum, &headIC, labal, root, &lastReg, inst); /* insert to IC */
         }
-        else
+        else /* invalid */
         {
-            printf("at line %d: invalid directive: %s\n", lineNum, inst);
-            foundErrorFirstPass = 1;
+            printf("at line %d: invalid directive: %s\n", lineNum, inst); /* error */
+            foundErrorFirstPass = 1; /* mark error */
         }
-        
 
-        thereIsLabal = 0;
-
-    }
-    if (commands) free(commands);
-    if (PC) free(PC);
-
-    curr = headDC;
-    while (curr)
-    {
-        curr->symbol->addr += IC;
-        curr = curr->next;
+        thereIsLabal = 0; /* reset label flag */
     }
 
-    if (headIC)
+    if (commands) free(commands); /* cleanup commands */
+    if (PC) free(PC); /* cleanup PC */
+
+    curr = headDC; /* start DC shifting */
+
+    while (curr) /* add IC to DC address */
     {
-        lastIC = headIC;
-        while (lastIC->next)
+        curr->symbol->addr += IC; /* shift address */
+        curr = curr->next; /* move forward */
+    }
+
+    if (headIC) /* if IC exists */
+    {
+        lastIC = headIC; /* start at head */
+        while (lastIC->next) /* go to end */
         {
-            lastIC = lastIC->next;
+            lastIC = lastIC->next; /* advance */
         }
         lastIC->next = headDC; /* connect DC after IC */
     }
-    mem.headDC = headDC;
-    mem.headIC = headIC;
-    return mem;
+
+    mem.headDC = headDC; /* save DC */
+    mem.headIC = headIC; /* save IC */
+    return mem; /* return full memory */
 }
 
-char* checkIfLabal(char* labal, reservedNode* root)
+/*
+the func: checkIfLabal
+input: possible label string, root reserved tree, line number, and current symbol tables
+output: label name if valid, otherwise NULL
+*/
+char* checkIfLabal(char* labal, reservedNode* root, int lineNum, symbolNode* DC, symbolNode* IC) /* check if valid label */
 {
-    int len = 0;
+    int len = 0; /* length of label */
+    reservedNode* check = NULL; /* pointer to reserved word node */
 
-    if (!labal || (len = strlen(labal)) >= LABAL_LEN)
+    if (!labal || (len = strlen(labal)) >= LABAL_LEN) /* null or too long */
     {
+        return NULL; /* invalid */
+    }
+    if (!((*labal >= BIG_A_ASCII && *labal <= BIG_Z_ASCII) || (*labal >= SMALL_A_ASCII && *labal <= SMALL_Z_ASCII)||*labal==DOT))
+    {
+        printf("at line %d: labal need to start with a letter!\n", lineNum);
+        foundErrorFirstPass = 1;
         return NULL;
     }
 
-    if (labal[len - 1] != COLOM)
+    if (labal[len - 1] != COLOM) /* must end with ':' */
     {
-        return NULL;
+        return NULL; /* not a label */
     }
 
-    labal[len - 1] = '\0';
+    labal[len - 1] = '\0'; /* remove ':' */
 
-    if (findNode(root, labal))
+    check = findNode(root, labal); /* check if reserved */
+
+    if (check || searchSymbolTable(labal, DC, IC,1)) /* check conflicts */
     {
-        return NULL;
+        if (check) /* label is a reserved word */
+        {
+            printf("at line %d: labal name is taken!\n", lineNum); /* error msg */
+            foundErrorFirstPass = 1; /* set error flag */
+        }
+        return NULL; /* invalid */
     }
 
-    return labal;
+    return labal; /* valid label name */
 }
 
-int putInDC(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC)
+
+/*
+the func: putInDC
+input: directive type (.data/.string/.mat), content, line number, symbol list head, label name, DC counter
+output: number of entries added to DC
+*/
+int putInDC(char* type, char* restOfLine, int lineNum, symbolNode** head, char* name, int* DC) /* parse and store .data/.string/.mat */
 {
-    int count = 0;
+    int count = 0; /* counter for entries added */
 
-    if (strcmp(type, SYMBOL_DATA) == 0)
+    if (strcmp(type, SYMBOL_DATA) == 0) /* if .data */
     {
-        count = handleData(restOfLine, lineNum, head, name, DC, type);
+        count = handleData(restOfLine, lineNum, head, name, DC, type); /* handle numeric data */
     }
-    else if (strcmp(type, SYMBOL_STRING) == 0)
+    else if (strcmp(type, SYMBOL_STRING) == 0) /* if .string */
     {
-        count = handleString(restOfLine, lineNum, head, name, DC);
+        count = handleString(restOfLine, lineNum, head, name, DC); /* handle string */
     }
-    else if (strcmp(type, SYMBOL_MAT) == 0)
+    else if (strcmp(type, SYMBOL_MAT) == 0) /* if .mat */
     {
-        count = handleMat(restOfLine, lineNum, head, name, DC);
-    }
-
-    if (*(restOfLine + strlen(restOfLine) - 1) == COMMA_ASCII)
-    {
-        printf("at line %d: trailing comma without value\n", lineNum);
-        foundErrorFirstPass = 1;
+        count = handleMat(restOfLine, lineNum, head, name, DC); /* handle matrix */
     }
 
-    return count;
+    if (*(restOfLine + strlen(restOfLine) - 1) == COMMA_ASCII) /* check trailing comma */
+    {
+        printf("at line %d: trailing comma without value\n", lineNum); /* error msg */
+        foundErrorFirstPass = 1; /* set error flag */
+    }
+
+    return count; /* return number of entries */
 }
 
-int handleData(char* curr, int lineNum, symbolNode** head, char* name, int* DC, char* type)
+/*
+the func: handleData
+input: data string, line number, DC list, label name, DC counter, type
+output: number of symbols added
+*/
+int handleData(char* curr, int lineNum, symbolNode** head, char* name, int* DC, char* type) /* handles .data directive */
 {
-    char* commanChecker = curr;
-    char tmp[BUFF_SIZE] = {0};
-    int count = 0, lastComma = 0, i = 0;
+    char* commanChecker = curr; /* pointer to scan for commas */
+    char tmp[BUFF_SIZE] = {0}; /* buffer for number strings */
+    int count = 0; /* how many added */
+    int lastComma = 0; /* flag for multiple commas */
+    int i = 0; /* index for tmp */
 
-    while (commanChecker && *commanChecker != EOL && *commanChecker != EOF && *commanChecker != 0)
+    while (commanChecker && *commanChecker != EOL && *commanChecker != EOF && *commanChecker != 0) /* scan for errors */
     {
-        if (*commanChecker == COMMA_ASCII)
+        if (*commanChecker == COMMA_ASCII) /* comma found */
         {
-            if (lastComma)
+            if (lastComma) /* double comma */
             {
-                printf("at line %d: multiple commas found\n", lineNum);
-                foundErrorFirstPass = 1;
+                printf("at line %d: multiple commas found\n", lineNum); /* error */
+                foundErrorFirstPass = 1; /* set error */
             }
-            lastComma = 1;
+            lastComma = 1; /* update state */
         }
-        else if (*commanChecker != ' ' && *commanChecker != '\t') lastComma = 0;
-
-        commanChecker++;
+        else if (*commanChecker != ' ' && *commanChecker != '\t') lastComma = 0; /* reset on non-whitespace */
+        commanChecker++; /* move forward */
     }
 
-    while (*curr == ' ' || *curr == '\t') curr++;
+    while (*curr == ' ' || *curr == '\t') curr++; /* skip whitespace */
 
-    while (*curr != EOL && *curr != EOF && *curr != 0)
+    while (*curr != EOL && *curr != EOF && *curr != 0) /* parse numbers */
     {
-        i = 0;
-        while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++;
-        if (i > 0)
+        i = 0; /* reset index */
+        while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++; /* collect number */
+        
+        if (i > 0) /* if something was collected */
         {
-            tmp[i] = '\0';
-            if (isNumeric(tmp))
+            tmp[i] = '\0'; /* null terminate */
+            if (isNumeric(tmp)) /* check valid number */
             {
-                addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, intToBinary(atoi(tmp)));
-                count++;
-                name = NULL;
+                addSymbol(head, (name) ? name : NULL, (*DC)++, (type) ? type : NULL, intToBinary(atoi(tmp))); /* add to DC */
+                count++; /* increase count */
+                name = NULL; /* use label only once */
             }
-            else
+            else /* invalid number */
             {
-                printf("at line %d: invalid number: %s\n", lineNum, tmp);
-                foundErrorFirstPass = 1;
+                printf("at line %d: invalid number: %s\n", lineNum, tmp); /* error */
+                foundErrorFirstPass = 1; /* flag */
             }
         }
-        while (*curr == ' ' || *curr == '\t' || *curr == COMMA_ASCII) curr++;
+
+        while (*curr == ' ' || *curr == '\t' || *curr == COMMA_ASCII) curr++; /* skip delimiters */
     }
 
-    return count;
+    return count; /* return how many added */
 }
 
-int handleString(char* curr, int lineNum, symbolNode** head, char* name, int* DC)
+/*
+the func: handleString
+input: string directive, line number, DC list, label, DC counter
+output: number of symbols added
+*/
+int handleString(char* curr, int lineNum, symbolNode** head, char* name, int* DC) /* handles .string directive */
 {
-    int count = 0;
-    char asciiStr[ASCII_BUF_SIZE] = {0};
+    int count = 0; /* counter */
+    char asciiStr[ASCII_BUF_SIZE] = {0}; /* ASCII representation */
 
-    while (*curr == ' ' || *curr == '\t') curr++;
+    while (*curr == ' ' || *curr == '\t') curr++; /* skip whitespace */
 
-    if (*curr == '"')
+    if (*curr == '"') /* opening quote */
     {
-        curr++;
-        while (*curr != '"' && *curr != '\0')
+        curr++; /* move to first char */
+
+        while (*curr != '"' && *curr != '\0') /* until closing quote or end */
         {
-            if (*curr == EOL || *curr == EOF)
+            if (*curr == EOL || *curr == EOF) /* invalid end */
             {
-                printf("at line %d: missing closing quote\n", lineNum);
-                foundErrorFirstPass = 1;
-                break;
+                printf("at line %d: missing closing quote\n", lineNum); /* error */
+                foundErrorFirstPass = 1; /* set flag */
+                break; /* exit loop */
             }
 
-            sprintf(asciiStr, "%d", *curr);
-            addSymbol(head, (name) ? name : NULL, (*DC)++, SYMBOL_DATA, intToBinary(atoi(asciiStr)));
-            count++;
-            name = NULL;
-            curr++;
+            sprintf(asciiStr, "%d", *curr); /* convert char to int */
+            addSymbol(head, (name) ? name : NULL, (*DC)++, SYMBOL_DATA, intToBinary(atoi(asciiStr))); /* add char */
+            count++; /* increase count */
+            name = NULL; /* clear label */
+            curr++; /* next char */
         }
 
-        if (*curr == '"')
+        if (*curr == '"') /* closing quote */
         {
-            addSymbol(head, NULL, (*DC)++, SYMBOL_DATA, strdup(CLEAR_MEM));
-            count++;
+            addSymbol(head, NULL, (*DC)++, SYMBOL_DATA, strdup(CLEAR_MEM)); /* add null terminator */
+            count++; /* increase count */
         }
-        else
+        else /* missing quote */
         {
-            printf("at line %d: missing closing quote\n", lineNum);
-            foundErrorFirstPass = 1;
+            printf("at line %d: missing closing quote\n", lineNum); /* error */
+            foundErrorFirstPass = 1; /* flag */
         }
     }
+    else /* string doesn't start with " */
+    {
+        printf("at line %d: invalid string format\n", lineNum); /* error */
+        foundErrorFirstPass = 1; /* flag */
+    }
+
+    return count; /* total added */
+}
+/*
+the func: handleMat
+input: matrix declaration string, line number, DC list, label, DC counter
+output: number of values inserted to DC
+*/
+int handleMat(char* curr, int lineNum, symbolNode** head, char* name, int* DC) /* handles .mat directive */
+{
+    char tmp[BUFF_SIZE] = {0}; /* temp number buffer */
+    int rows = 0; /* matrix rows */
+    int cols = 0; /* matrix cols */
+    int count = 0; /* count of inserted values */
+    int i = 0; /* index */
+    char* commanChecker = curr; /* comma checker */
+    int lastComma = 0; /* double comma flag */
+
+    while (commanChecker && *commanChecker != EOL && *commanChecker != EOF && *commanChecker != 0) /* check for double commas */
+    {
+        if (*commanChecker == COMMA_ASCII) /* comma found */
+        {
+            if (lastComma) /* previous was also comma */
+            {
+                printf("at line %d: multiple commas found\n", lineNum); /* error */
+                foundErrorFirstPass = 1; /* flag */
+            }
+            lastComma = 1; /* set flag */
+        }
+        else if (*commanChecker != ' ' && *commanChecker != '\t') lastComma = 0; /* reset if not space */
+        commanChecker++; /* next char */
+    }
+
+    while (*curr == ' ' || *curr == '\t') curr++; /* skip whitespace */
+
+    if (*curr != LEFT_BRACKET) /* must start with [ */
+    {
+        printf("at line %d: invalid mat format\n", lineNum); /* error */
+        foundErrorFirstPass = 1; /* flag */
+        return 0; /* stop */
+    }
+
+    curr++; i = 0; /* move past [ and reset index */
+
+    while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++; /* read row */
+    curr++; /* skip ] */
+    if (i > 0 && isNumeric(tmp)) rows = atoi(tmp); /* valid row */
     else
     {
-        printf("at line %d: invalid string format\n", lineNum);
-        foundErrorFirstPass = 1;
+        printf("at line %d: invalid number of rows: %s\n", lineNum, tmp); /* error */
+        foundErrorFirstPass = 1; /* flag */
     }
 
-    return count;
-}
+    while (*curr == ' ' || *curr == '\t' || *curr == LEFT_BRACKET) curr++; /* skip until cols */
+    i = 0; /* reset index */
 
-int handleMat(char* curr, int lineNum, symbolNode** head, char* name, int* DC)
-{
-    char tmp[BUFF_SIZE] = {0};
-    int rows = 0, cols = 0, count = 0, i = 0;
-    char* commanChecker = curr;
-    int lastComma = 0;
+    while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++; /* read col */
 
-    while (commanChecker && *commanChecker != EOL && *commanChecker != EOF && *commanChecker != 0)
-    {
-        if (*commanChecker == COMMA_ASCII)
-        {
-            if (lastComma)
-            {
-                printf("at line %d: multiple commas found\n", lineNum);
-                foundErrorFirstPass = 1;
-            }
-            lastComma = 1;
-        }
-        else if (*commanChecker != ' ' && *commanChecker != '\t') lastComma = 0;
-        commanChecker++;
-    }
-
-    while (*curr == ' ' || *curr == '\t') curr++;
-    if (*curr != LEFT_BRACKET)
-    {
-        printf("at line %d: invalid mat format\n", lineNum);
-        foundErrorFirstPass = 1;
-        return 0;
-    }
-
-    curr++; i = 0;
-    while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++;
-    curr++;
-    if (i > 0 && isNumeric(tmp)) rows = atoi(tmp);
+    if (i > 0 && isNumeric(tmp)) cols = atoi(tmp); /* valid col */
     else
     {
-        printf("at line %d: invalid number of rows: %s\n", lineNum, tmp);
-        foundErrorFirstPass = 1;
+        printf("at line %d: invalid number of columns: %s\n", lineNum, tmp); /* error */
+        foundErrorFirstPass = 1; /* flag */
     }
 
-    while (*curr == ' ' || *curr == '\t'|| *curr == LEFT_BRACKET) curr++;
+    curr++; /* skip ] */
+    while (*curr == ' ' || *curr == '\t') curr++; /* skip whitespace */
 
-    i = 0;
-    while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == '-' || *curr == '+') tmp[i++] = *curr++;
-
-    if (i > 0 && isNumeric(tmp)) cols = atoi(tmp);
-    else
+    while (*curr != EOL && *curr != EOF && *curr != 0 && count < rows * cols) /* parse matrix values */
     {
-        printf("at line %d: invalid number of columns: %s\n", lineNum, tmp);
-        foundErrorFirstPass = 1;
-    }
+        while (*curr == ' ' || *curr == '\t' || *curr == COMMA_ASCII) curr++; /* skip */
 
-    curr++;
-    while (*curr == ' ' || *curr == '\t') curr++;
+        i = 0; /* reset index */
+        while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == MINUS_ASCII || *curr == PLUS_ASCII) tmp[i++] = *curr++; /* collect value */
 
-    while (*curr != EOL && *curr != EOF && *curr != 0 && count < rows * cols)
-    {
-        while (*curr == ' ' || *curr == '\t'|| *curr == COMMA_ASCII) curr++;
-
-        i = 0;
-        while ((*curr >= ZERO_ASCII && *curr <= NINE_ASCII) || *curr == MINUS_ASCII || *curr == PLUS_ASCII)
+        if (i > 0) /* valid number */
         {
-            tmp[i++] = *curr++;
-        }
-
-        if (i > 0)
-        {
-            tmp[i] = '\0';
-            putInDC(SYMBOL_DATA, tmp, lineNum, head, name, DC);
-            name = NULL;
-            count++;
+            tmp[i] = '\0'; /* terminate */
+            putInDC(SYMBOL_DATA, tmp, lineNum, head, name, DC); /* insert */
+            name = NULL; /* reset label */
+            count++; /* increment */
         }
     }
 
-    while (count < rows * cols)
+    while (count < rows * cols) /* fill remaining with 0 */
     {
-        addSymbol(head, (name) ? name : NULL, (*DC)++, SYMBOL_DATA, 0);
-        count++;
-        name = NULL;
+        addSymbol(head, (name) ? name : NULL, (*DC)++, SYMBOL_DATA, strdup(CLEAR_MEM)); /* insert zero */
+        count++; /* increment */
+        name = NULL; /* clear */
     }
 
-    return count;
+    return count; /* return added values */
 }
-
+/* 
+the func: putInIC
+input: IC counter, rest of line, line number, IC list, label name, reserved root, lastReg tracker, instruction name
+output: none (adds encoded instructions to IC)
+*/
 void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* name, reservedNode* root, char** lastReg, char* inst)
 {
-    int i = 0, j = 0;
-    char** params = breakToParams(restOfLine, 1);
-    char** paramsBackets = breakToParams(restOfLine, 0);
-    reservedNode* rNode = NULL, * rNodeNext = NULL;
-    char* currBinary = NULL, * currBinaryInst = NULL;
-    char fullRegBin[TEN_BITS + 1];
-    int currParamMat = 0;
-    int icStart = *IC;
-    char addressingTypeSrc = -1, addressingTypeDst = -1;
-    char* addressingTypeString = NULL;
-    char regBin[TEN_BITS + 1];
-    char* currOpDst = NULL, * currOpSrc = NULL, * currName = name;
+    int i = 0; /* index */
+    int j = 0; /* secondary index */
+    char** params = breakToParams(restOfLine, 1); /* tokenize with brackets */
+    char** paramsBackets = breakToParams(restOfLine, 0); /* tokenize without brackets */
+    reservedNode* rNode = NULL; /* current param */
+    reservedNode* rNodeNext = NULL; /* next param */
+    char* currBinary = NULL; /* instruction bits */
+    char* currBinaryInst = NULL; /* original copy of instruction word */
+    char fullRegBin[TEN_BITS + 1]; /* for double register encoding */
+    int currParamMat = 0; /* matrix flag */
+    int icStart = *IC; /* save start address */
+    int len = strlen(restOfLine); /* length of line */
+    char addressingTypeSrc = -1; /* source addr type */
+    char addressingTypeDst = -1; /* dest addr type */
+    char* addressingTypeString = NULL; /* holds binary of addressing type */
+    char regBin[TEN_BITS + 1]; /* reg bits single */
+    char* currOpDst = NULL; /* allowed dst addressing types */
+    char* currOpSrc = NULL; /* allowed src addressing types */
+    char* currName = name; /* save label */
+    char* endOfLine = NULL; /* used to check trailing comma */
+    (*IC)++; /* for the main instruction word */
 
-    (*IC)++;
-
-
-    if (findNode(root, inst)->reserved->type && strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0)
+    if (findNode(root, inst)->reserved->type && strcmp(findNode(root, inst)->reserved->type, SYMBOL_CODE) == 0) 
     {
         currBinary = strdup(CLEAR_MEM);
         currOpSrc = findNode(root, inst)->reserved->opSrc;
@@ -431,21 +464,25 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
 
     }
 
-    for (i = 0; params[i] != NULL; i++)
+    for (i = 0; params[i] != NULL; i++)/*looping tho params*/
     {
         if (params[i] && strchr(params[i], '\n'))
         {
             *strchr(params[i], '\n') = '\0';
         }
+        if (params[i + 1] && strchr(params[i + 1], '\n'))
+        {
+            *strchr(params[i + 1], '\n') = '\0';
+        }
         
-        currParamMat = (addressingTypeSrc==-1)?checkIfValidMatParam(paramsBackets[0]):checkIfValidMatParam(paramsBackets[1]);
+        currParamMat = (addressingTypeSrc==-1)?checkIfValidMatParam(paramsBackets[0]):checkIfValidMatParam(paramsBackets[1]);/*checking if matrix*/
         if (currParamMat == 0)
         {
             printf("at line %d: invalid mat format, expected [rows][cols]\n", lineNum);
             foundErrorFirstPass = 1;
         }
 
-        if ((*params[i] == '#') && isNumeric(params[i] + 1))
+        if ((*params[i] == '#') && isNumeric(params[i] + 1))/*checking if number*/
         {
             addSymbol(head, NULL, (*IC)++, SYMBOL_CODE, intToBinary(atoi(params[i] + 1)));
 
@@ -469,8 +506,9 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
 
         rNode = findNode(root, params[i]);
 
-        if (rNode && rNode->reserved->type && strcmp(rNode->reserved->type, REGISTER_SYMBOL) == 0)
+        if (rNode && rNode->reserved->type && strcmp(rNode->reserved->type, REGISTER_SYMBOL) == 0)/*checking if reg*/
         {
+
             currBinary = rNode->reserved->binary + SIX_BITS;
 
             if (params[i + 1])
@@ -478,25 +516,22 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
                 rNodeNext = findNode(root, params[i + 1]);
             }
 
-            if (rNodeNext && rNodeNext->reserved && strcmp(rNodeNext->reserved->type, REGISTER_SYMBOL) == 0)
+            if (rNodeNext && rNodeNext->reserved && strcmp(rNodeNext->reserved->type, REGISTER_SYMBOL) == 0)/*checking if next param reg*/
             {
 
-            if (addressingTypeSrc == -1)
-            {
-                if (!currParamMat)
+                if (addressingTypeSrc == -1)
                 {
-                    addressingTypeSrc = TWO_ASCII;
+                    if (!currParamMat)
+                    {
+                        addressingTypeSrc = TWO_ASCII;
+                    }
+                    else
+                    {
+                        addressingTypeSrc = THREE_ASCII;
+                        addressingTypeDst = THREE_ASCII; 
+                    }
                 }
-                else
-                {
-                    addressingTypeSrc = THREE_ASCII;
-                    addressingTypeDst = THREE_ASCII; 
-                }
-            }
-            else
-            {
-                addressingTypeDst = TWO_ASCII;
-            }
+            
 
                 strncpy(fullRegBin, currBinary, FOUR_BITS);
                 strncpy(fullRegBin + FOUR_BITS, rNodeNext->reserved->binary + SIX_BITS, FOUR_BITS);
@@ -507,7 +542,7 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
                 addSymbol(head, name, (*IC)++, SYMBOL_CODE, strdup(fullRegBin));
                 i++;
             }
-            else
+            else/*if only one reg*/
             {
                 if (addressingTypeSrc == -1 && !(params[1] == NULL || strlen(params[1]) == 0))
                 {
@@ -536,7 +571,7 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
             continue;
         }
 
-        if (addressingTypeSrc == -1)
+        if (addressingTypeSrc == -1)/*if addr type wasnt choosen yet*/
         {
             if (checkIfValidMatParam(paramsBackets[0])==1)
             {
@@ -553,44 +588,50 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
                 addressingTypeSrc = -1;
             }
         }
-        else
-        {
+        else /*if not addr type wasnt choosen yet*/
+        {                  
             if (checkIfValidMatParam(paramsBackets[1])==1)
             {   
                 addressingTypeDst = TWO_ASCII;
             }
-            else if (!(params[i] == NULL || strlen(params[i]) == 0))
+            else if ((params[i] != NULL || strlen(params[i]) != 0)&&addressingTypeDst==-1)
             {
                 addressingTypeDst = ONE_ASCII;
             }
         }
-
         if (params[i] && strlen(params[i]) > 0)
         {
             addSymbol(head, NULL, (*IC)++, SYMBOL_CODE, strdup(params[i]));
         }
         if (params[1] == NULL || strlen(params[1]) == 0|| *params[1] == 0)
-        {
-            addressingTypeDst = addressingTypeSrc;
-            addressingTypeSrc = ZERO_ASCII; 
-        }
+        { 
+            if (*params[0]=='#')
+            {
+                addressingTypeDst = ZERO_ASCII; 
+                addressingTypeSrc = ZERO_ASCII; 
+            }
 
+        }
     }
 
     if ((params[1] == NULL || strlen(params[1]) == 0) || addressingTypeSrc == -1)
     {
         addressingTypeSrc = ZERO_ASCII;
     }
+    if (params[0] == NULL || strlen(params[0]) == 0)
+    {
+        addressingTypeDst = ZERO_ASCII;
+    }
     if (currBinaryInst)
     {
         addressingTypeString = intToBinary(addressingTypeDst - ZERO_ASCII);
 
-        if (currOpDst && strchr(currOpDst, addressingTypeDst))
+        if (currOpDst && strchr(currOpDst, addressingTypeDst))/*if addrsessing type is good*/
         {
             currBinaryInst[6] = addressingTypeString[8];
             currBinaryInst[7] = addressingTypeString[9];
         }
-        else if (params[1]!=NULL)
+        else if (params[1]!=NULL && strlen(params[1]) > 0)/*if addrsessing type is not good*/
         {
             printf("at line %d: dst param is invalid!\n",lineNum);
             foundErrorFirstPass = 1;
@@ -598,13 +639,13 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
 
 
         addressingTypeString = intToBinary(addressingTypeSrc - ZERO_ASCII);
-        if (currOpSrc && strchr(currOpSrc, addressingTypeSrc))
+        if (currOpSrc && strchr(currOpSrc, addressingTypeSrc))/*if addrsessing type is good*/
         {
             
             currBinaryInst[4] = addressingTypeString[8];
             currBinaryInst[5] = addressingTypeString[9];
         }
-        else if (params[0]!=NULL&&currOpSrc)
+        else if (params[0]!=NULL&&currOpSrc)/*if addrsessing type is not good*/
         {
             printf("at line %d: src param is invalid!\n",lineNum);
             foundErrorFirstPass = 1;
@@ -615,100 +656,103 @@ void putInIC(int* IC, char* restOfLine, int lineNum, symbolNode** head, char* na
     {
         insertSymbolSortedByAddr(head, currName, icStart, SYMBOL_CODE, strdup(currBinaryInst));
     }
+    if (len > 0)
+    {
+        endOfLine = restOfLine + len - 1;
+        while ((*endOfLine == ' ' || *endOfLine == '\t')|| *endOfLine == '\n') endOfLine--;
 
+        if (*endOfLine == COMMA_ASCII)
+        {
+            printf("at line %d: comma at end of line without value after!\n", lineNum);
+            foundErrorFirstPass = 1;
+        }
+    }
     for (i = 0; params[i]; i++) free(params[i]);
     free(params);
     free(paramsBackets);
     free(addressingTypeString);
 }
 
-
-int isNumeric(char* str)
+/* 
+the func: firstPass
+input: reserved words tree, file pointer
+output: memory struct after first pass (symbol tables)
+*/
+memory firstPass(reservedNode* root, FILE* file) /* performs the first pass on the source file */
 {
-    if (*str == '+' || *str == '-')
-    {
-        str++;
-    }
-    if (*str == '\0')
-    {
-        return 0;
-    }
-    while (*str)
-    {
-        if (*str < '0' || *str > '9')
-        {
-            return 0;
-        }
-        str++;
-    }
-    return 1;
-}
+    memory mem = buildSymbols(root, file); /* build symbols from source */
 
-memory firstPass(reservedNode* root, FILE* file)
-{
-    memory mem = {0};
-
-    if (foundErrorFirstPass)
+    if (foundErrorFirstPass) /* check if any error was detected */
     {
-        printf("Errors found in first pass, aborting symbol table creation.\n");
-        mem.headDC = NULL;
-        mem.headIC = NULL;
-        return mem;/* return empty memory struct */
+        printf("Errors found in first pass, aborting symbol table creation.\n"); /* error msg */
+        mem.headDC = NULL; /* clear data section */
+        mem.headIC = NULL; /* clear code section */
+        return mem; /* return empty memory struct */
     }
-    else
+    else /* no errors */
     {
-        return buildSymbols(root, file);
+        return mem; /* return memory with symbol tables */
     }
 }
 
-int checkIfValidMatParam(char* param)
+/* 
+the func: checkIfValidMatParam
+input: a parameter string
+output: 1 if valid matrix param, -1 if no brackets, 0 if invalid format
+*/
+int checkIfValidMatParam(char* param) /* checks if the parameter has valid [row][col] matrix format */
 {
-    int leftBrackets = 0;
-    int rightBrackets = 0;
-    char* paramTmp = param;
-    if (!paramTmp)
+    int leftBrackets = 0; /* counter for '[' */
+    int rightBrackets = 0; /* counter for ']' */
+    char* paramTmp = param; /* temp pointer to iterate */
+
+    if (!paramTmp) /* null check */
     {
-        return -1;
+        return -1; /* no brackets at all */
     }
 
-    while (*paramTmp)
+    while (*paramTmp) /* go through each char */
     {
-        if (*paramTmp == LEFT_BRACKET)
+        if (*paramTmp == LEFT_BRACKET) /* '[' found */
         {
-            leftBrackets++;
+            leftBrackets++; /* count it */
         }
-        else if (*paramTmp == RIGHT_BRACKET)
+        else if (*paramTmp == RIGHT_BRACKET) /* ']' found */
         {
-            rightBrackets++;
+            rightBrackets++; /* count it */
         }
-        paramTmp++;
+        paramTmp++; /* move to next char */
     }
 
-    if (leftBrackets == 2 && rightBrackets == 2)
+    if (leftBrackets == 2 && rightBrackets == 2) /* correct amount */
     {
-        return 1;
+        return 1; /* valid matrix format */
     }
-    else if (leftBrackets == 0 && rightBrackets == 0)
+    else if (leftBrackets == 0 && rightBrackets == 0) /* no brackets at all */
     {
-        return -1;
+        return -1; /* no brackets */
     }
-    return 0;
+
+    return 0; /* malformed brackets */
 }
 
-char* countRestOfLine(char* line, int isLabal)
+/* 
+the func: countRestOfLine
+input: full line, and if it contains label
+output: pointer to beginning of content after opcode
+*/
+char* countRestOfLine(char* line, int isLabal) /* skips 1 or 2 words from line and returns pointer to remaining */
 {
-    int wordCount = isLabal ? 2 : 1;
+    int wordCount = isLabal ? 2 : 1; /* number of words to skip */
 
-    /* skip leading whitespace */
-    while (*line && (*line == ' ' || *line == '\t')) line++;
+    while (*line && (*line == ' ' || *line == '\t')) line++; /* skip leading whitespace */
 
-    /* skip the first 1 or 2 words */
-    while (*line && wordCount > 0)
+    while (*line && wordCount > 0) /* loop to skip words */
     {
-        while (*line && *line != ' ' && *line != '\t') line++; /* skip word */
-        while (*line && (*line == ' ' || *line == '\t')) line++; /* skip spaces after */
-        wordCount--;
+        while (*line && *line != ' ' && *line != '\t') line++; /* skip over a word */
+        while (*line && (*line == ' ' || *line == '\t')) line++; /* skip spaces after word */
+        wordCount--; /* decrement word counter */
     }
 
-    return line;
+    return line; /* return pointer to rest of line */
 }

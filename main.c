@@ -20,9 +20,10 @@ int main(int argc,char** argv)
     outputFileAm = preassmble(inputFile,inputFileName,root);
 
     mem = firstPass(root,outputFileAm); 
-
+    mem = secondPass(&mem.headIC,&mem.headDC);
     printf("\n\n\n");
     printSymbols(mem.headIC);
+
     free(inputFileName);
     fclose(outputFileAm);
     fclose(inputFile);

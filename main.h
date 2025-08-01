@@ -3,5 +3,6 @@
 
 #include "preassembler.h"
 #include "firstPass.h"
+#include "secondPass.h"
 #include "utils.h"
 #endif 
